@@ -1,0 +1,41 @@
+hsu_ecx_CustomedForMe work log
+Date: 2026-04-07
+
+1. Environment and build setup
+- Confirmed the project runs from C:\myProgramWithCodex\hsu_ecx_CustomedForMe.
+- Verified npm scripts and dependencies.
+- Fixed Windows-incompatible build/export script behavior.
+- Added helper scripts under scripts\ for clean/build/export flow.
+- Verified with `npm run check` and `npm run build`.
+
+2. Chrome extension loading
+- Built the extension and confirmed it can be loaded from the dist folder.
+- Identified the custom unpacked extension versus the original installed extension.
+- Confirmed that both extensions should not stay enabled together on the same site.
+
+3. Video progress display fixes
+- Found that the original progress UI treated the attendance-required time as if it were the full video length.
+- Updated the progress display so the meaning is clearer.
+- Added parsing for the real displayed video duration from the school page markup.
+- Used `span.text-info` for the displayed duration value.
+- Changed the main progress row order to:
+  watched time / displayed video duration / attendance-required time
+
+4. Sidepanel updates
+- Added duration support to the sidepanel video view.
+- Matched the sidepanel text order with the updated main-page display.
+
+5. Text and label cleanup
+- Fixed broken Korean labels in the modified UI.
+- Removed the explicit "실제 길이" wording from the main progress text where requested.
+
+6. Git and branch work
+- Created and switched to branch: wns544_Customed
+- Committed changes with:
+  fix video duration display and windows build scripts
+- Pushed to:
+  origin/wns544_Customed
+
+Notes
+- Rebuild is only needed after code changes.
+- On another PC, loading the built dist folder is enough if no further code edits are needed.

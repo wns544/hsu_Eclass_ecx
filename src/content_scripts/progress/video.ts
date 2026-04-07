@@ -6,7 +6,7 @@ import { formatDiff } from "#/utils/format";
 
 import Horizontal from "#cs/comps/horizontal";
 import Progress from "#cs/comps/progress";
-import Badge from "#cs/comps/badge";
+import Badge, { ActionBadge } from "#cs/comps/badge";
 
 type Status = "Att" | "Abs" | "Pend" | "Disabled";
 
@@ -31,6 +31,7 @@ export default function videoExt(video: Element, { title, actual, required }: Vi
     })();
 
     const duration = readDuration(video);
+    insertActionButtons(video);
 
     const el = Horizontal();
     insertBelow(video, el);
@@ -65,6 +66,39 @@ export default function videoExt(video: Element, { title, actual, required }: Vi
         vRemEl,
         statusEl,
     ].filter(e => e !== null));
+}
+
+function insertActionButtons(video: Element) {
+    const inst = video.querySelector("div.activityinstance");
+    const display = video.querySelector("span.displayoptions");
+    const link = video.querySelector<HTMLAnchorElement>("a[href*=\"/mod/vod/view.php?id=\"]");
+    if (!inst || !display || !link || inst.querySelector(".ecx-video-actions")) {
+        return;
+    }
+
+    const viewerUrl = link.href.replace("/view.php?", "/viewer.php?");
+
+    const actions = document.createElement("span");
+    actions.className = "ecx-video-actions";
+
+    const openEl = ActionBadge("\uC5F4\uAE30", "info", () => {
+        window.open(viewerUrl, "_blank", "noopener,noreferrer");
+    });
+
+    const copyEl = ActionBadge("\uBCF5\uC0AC", "secondary", async () => {
+        const ok = await copyText(viewerUrl);
+        copyEl.textContent = ok ? "\uBCF5\uC0AC\uB428" : "\uBCF5\uC0AC \uC2E4\uD328";
+        window.setTimeout(() => {
+            copyEl.textContent = "\uBCF5\uC0AC";
+        }, 1500);
+    });
+
+    const downloadEl = ActionBadge("\uB2E4\uC6B4\uB85C\uB4DC", "primary", () => {
+        window.open(viewerUrl, "_blank", "noopener,noreferrer");
+    });
+
+    actions.append(openEl, copyEl, downloadEl);
+    display.insertAdjacentElement("afterend", actions);
 }
 
 function readDuration(video: Element) {
@@ -105,4 +139,21 @@ function formatClock(sec: number): string {
         return `${hour}:${min.toString().padStart(2, "0")}:${rem.toString().padStart(2, "0")}`;
     }
     return `${Math.floor(sec / 60)}:${rem.toString().padStart(2, "0")}`;
+}
+
+async function copyText(text: string) {
+    try {
+        await navigator.clipboard.writeText(text);
+        return true;
+    } catch {
+        const input = document.createElement("input");
+        input.value = text;
+        input.style.position = "fixed";
+        input.style.opacity = "0";
+        document.body.append(input);
+        input.select();
+        const ok = document.execCommand("copy");
+        input.remove();
+        return ok;
+    }
 }

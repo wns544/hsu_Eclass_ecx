@@ -1,0 +1,83 @@
+@use "../shared/direct-download-dashboard";
+
+:root {
+    color-scheme: light;
+}
+
+body {
+    margin: 0;
+    background:
+        radial-gradient(circle at top left, rgba(14, 165, 233, 0.18), transparent 38%),
+        linear-gradient(180deg, #f4f8fc 0%, #eef3f8 100%);
+    color: #132238;
+    font-family: "Segoe UI", "Malgun Gothic", sans-serif;
+}
+
+#app {
+    width: 400px;
+    min-height: 440px;
+    padding: 16px;
+    box-sizing: border-box;
+}
+
+.ecx-popup-shell {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.ecx-popup-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.ecx-popup-title-wrap {
+    min-width: 0;
+}
+
+.ecx-popup-eyebrow {
+    color: #0f6fa8;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.ecx-popup-title {
+    margin: 6px 0 0;
+    color: #132238;
+    font-size: 22px;
+    line-height: 1.1;
+}
+
+.ecx-popup-subtitle {
+    margin: 8px 0 0;
+    color: #5f7087;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.ecx-popup-open {
+    flex-shrink: 0;
+    padding: 10px 14px;
+    border: 0;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #1d4ed8, #0ea5e9);
+    color: white;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 12px 24px rgba(29, 78, 216, 0.18);
+}
+
+.ecx-popup-open:hover {
+    filter: brightness(1.03);
+}
+
+.ecx-popup-content {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}

@@ -12,14 +12,21 @@
     },
     "permissions": [
         "tabs",
-        "sidePanel"
+        "sidePanel",
+        "downloads",
+        "offscreen",
+        "storage"
+    ],
+    "host_permissions": [
+        "https://*/*"
     ],
     "action": {
         "default_icon": {
             "16": "/assets/icon-16.png",
             "24": "/assets/icon-24.png",
             "32": "/assets/icon-32.png"
-        }
+        },
+        "default_popup": "/popup/index.html"
     },
     "background": {
         "service_worker": "/service_worker/index.js"
@@ -49,6 +56,15 @@
             ],
             "css": [
                 "/content_scripts/progress/index.css"
+            ]
+        },
+        {
+            "matches": [
+                "https://learn.hansung.ac.kr/mod/vod/viewer.php?*",
+                "https://learn.hansung.ac.kr/mod/laby/viewer.php?*"
+            ],
+            "js": [
+                "/content_scripts/viewer/index.js"
             ]
         }
     ]

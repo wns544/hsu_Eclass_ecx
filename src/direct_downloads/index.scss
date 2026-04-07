@@ -1,0 +1,81 @@
+@use "../shared/direct-download-dashboard";
+
+:root {
+    color-scheme: light;
+}
+
+body {
+    margin: 0;
+    background:
+        radial-gradient(circle at top left, rgba(14, 165, 233, 0.16), transparent 30%),
+        radial-gradient(circle at bottom right, rgba(37, 99, 235, 0.12), transparent 28%),
+        linear-gradient(180deg, #f4f8fc 0%, #eef3f8 100%);
+    color: #132238;
+    font-family: "Segoe UI", "Malgun Gothic", sans-serif;
+}
+
+#app {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 32px 20px 48px;
+    box-sizing: border-box;
+}
+
+.ecx-monitor-shell {
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+}
+
+.ecx-monitor-header {
+    padding: 24px 26px;
+    border: 1px solid rgba(23, 37, 84, 0.08);
+    border-radius: 24px;
+    background:
+        linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(244, 248, 252, 0.94));
+    box-shadow: 0 18px 38px rgba(15, 23, 42, 0.08);
+}
+
+.ecx-monitor-eyebrow {
+    color: #0f6fa8;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.ecx-monitor-title {
+    margin: 8px 0 0;
+    color: #132238;
+    font-size: 32px;
+    line-height: 1.1;
+}
+
+.ecx-monitor-subtitle {
+    max-width: 760px;
+    margin: 10px 0 0;
+    color: #60708a;
+    font-size: 14px;
+    line-height: 1.7;
+}
+
+.ecx-monitor-content {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+@media (max-width: 720px) {
+    #app {
+        padding: 18px 14px 30px;
+    }
+
+    .ecx-monitor-header {
+        padding: 18px;
+        border-radius: 18px;
+    }
+
+    .ecx-monitor-title {
+        font-size: 24px;
+    }
+}

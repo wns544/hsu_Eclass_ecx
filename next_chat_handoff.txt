@@ -1,0 +1,236 @@
+PROJECT HANDOFF FOR NEXT CHAT
+Date: 2026-04-07
+Workspace: C:\myProgramWithCodex\hsu_ecx_CustomedForMe
+Repository: https://github.com/wns544/hsu_Eclass_ecx.git
+Working branch: wns544_Customed
+
+==================================================
+1. CURRENT STATUS
+==================================================
+
+The customized HSU e-class extension is now in a much later state than the
+earlier "CORS / TS-only" experimental phase.
+
+The direct-download feature is no longer just a failing prototype.
+
+Current real behavior:
+
+- Existing `열기 / 복사 / 다운로드` buttons are preserved.
+- `직접다운` remains a separate experimental button.
+- Direct download can now capture HLS, download segments, remux TS-based HLS to MP4,
+  and save a real `.mp4` file.
+- Multiple direct-download jobs can be queued in one burst.
+- Capture is serialized to avoid the site's multiple-session popup.
+- Actual downloading/remuxing continues in parallel after capture.
+- The extension now has its own progress UI:
+  - course-page status badge beside `직접다운`
+  - action badge count on the extension icon
+  - popup showing active and recent jobs
+  - singleton monitor tab for all current direct-download jobs
+
+==================================================
+2. NON-NEGOTIABLE USER INTENT
+==================================================
+
+The user has repeated this many times. Do not violate it.
+
+Required button structure:
+
+- `열기`
+- `복사`
+- `다운로드`
+- `직접다운`
+
+Meaning:
+
+- Keep `열기 / 복사 / 다운로드` intact.
+- Do not merge `직접다운` into `다운로드`.
+- `다운로드` is still the helper path for FetchV or similar tools.
+- `직접다운` is the separate built-in downloader experiment.
+
+==================================================
+3. DIRECT-DOWNLOAD ARCHITECTURE NOW
+==================================================
+
+The site appears to block long-lived simultaneous viewer sessions with a
+"multiple access" style popup.
+
+Because of that, the current working model is:
+
+1. User clicks `직접다운` on multiple lectures.
+2. Jobs are queued in the background.
+3. Only one hidden viewer tab is opened at a time to capture the actual playlist URL.
+4. That hidden viewer tab auto-starts playback heuristically, captures the HLS `m3u8`,
+   then closes quickly.
+5. Once the playlist URL is captured, the actual download/remux work proceeds without
+   needing that viewer tab to stay open.
+6. This allows:
+   - capture: sequential
+   - actual media download/remux: parallel
+
+This was designed to imitate the practical user experience they described with
+FetchV: briefly open/capture, then continue downloading independently.
+
+==================================================
+4. WHY THIS DIRECTION WAS CHOSEN
+==================================================
+
+Earlier direct-download attempts failed because:
+
+- page/content-script fetches hit CORS
+- naive HLS merging naturally produced `.ts`, not `.mp4`
+
+Those blockers were addressed with:
+
+- viewer detection + background/service-worker downloading
+- `mux.js` remux for TS-based HLS to MP4
+- offscreen document + IndexedDB for file assembly
+- service worker owning the final `chrome.downloads.download(...)` call
+
+==================================================
+5. WHAT NOW WORKS
+==================================================
+
+Confirmed/implemented behavior:
+
+- direct HLS playlist capture from viewer
+- background segment download
+- TS HLS -> MP4 remux
+- MP4 save
+- stripping trailing `동영상출석` from output filenames
+- queue multiple direct-download jobs quickly
+- status UI in the extension itself
+
+Important UI now present:
+
+1. Course-page row status
+   - each lecture's `직접다운` button gets a status badge
+   - phases include:
+     - `대기중`
+     - `캡처중`
+     - `분석중`
+     - `다운로드중`
+     - `저장중`
+     - `완료`
+     - `실패`
+
+2. Action badge
+   - extension icon shows active direct-download count
+
+3. Popup
+   - clicking the extension icon opens a popup
+   - popup lists current and recent direct-download jobs
+   - includes title, course name, progress, and size info
+
+4. Monitor tab
+   - a dedicated tab shows all direct-download jobs
+   - it is intentionally a singleton tab
+   - new jobs are added into the existing tab instead of opening one new tab per job
+
+==================================================
+6. IMPORTANT RECENT BUGFIX
+==================================================
+
+When two or more direct-download jobs were running in parallel, the monitor list
+kept reordering itself on every progress update.
+
+Cause:
+
+- sorting used `updatedAt`
+- whichever job reported progress most recently jumped above the other one
+
+Fix:
+
+- active jobs are now ordered by `createdAt`
+- completed/failed jobs still sort by recency
+
+Practical effect:
+
+- active download cards no longer jump up/down and cause visual confusion
+
+==================================================
+7. CURRENT LIMITATIONS
+==================================================
+
+Still true:
+
+- Chrome's native downloads panel does not show progress during the internal
+  fetch/remux/assembly phase.
+- The Chrome download item appears only after the final object URL is handed to
+  `chrome.downloads.download(...)`.
+- Therefore, in-progress visibility must come from the extension UI
+  (course badge / popup / monitor tab), not from Chrome's own download shelf.
+
+Other limits:
+
+- encrypted HLS is still unsupported
+- extension reload during active download causes active jobs to be marked failed
+- there may still be corner cases where hidden viewer auto-play/capture needs tuning
+
+==================================================
+8. MOST RELEVANT FILES NOW
+==================================================
+
+Direct-download core:
+
+- C:\myProgramWithCodex\hsu_ecx_CustomedForMe\src\service_worker\index.ts
+- C:\myProgramWithCodex\hsu_ecx_CustomedForMe\src\content_scripts\viewer\index.ts
+- C:\myProgramWithCodex\hsu_ecx_CustomedForMe\src\offscreen\index.ts
+- C:\myProgramWithCodex\hsu_ecx_CustomedForMe\src\shared\direct-download-store.ts
+- C:\myProgramWithCodex\hsu_ecx_CustomedForMe\src\shared\direct-download-state.ts
+
+Direct-download UI:
+
+- C:\myProgramWithCodex\hsu_ecx_CustomedForMe\src\content_scripts\progress\video.ts
+- C:\myProgramWithCodex\hsu_ecx_CustomedForMe\src\shared\direct-download-dashboard.ts
+- C:\myProgramWithCodex\hsu_ecx_CustomedForMe\src\popup\index.ts
+- C:\myProgramWithCodex\hsu_ecx_CustomedForMe\src\direct_downloads\index.ts
+- C:\myProgramWithCodex\hsu_ecx_CustomedForMe\app\popup\index.html
+- C:\myProgramWithCodex\hsu_ecx_CustomedForMe\app\direct_downloads\index.html
+
+Manifest / permissions:
+
+- C:\myProgramWithCodex\hsu_ecx_CustomedForMe\app\manifest.dev.json
+- C:\myProgramWithCodex\hsu_ecx_CustomedForMe\app\manifest.prod.json
+
+==================================================
+9. BUILD / VALIDATION STATUS
+==================================================
+
+Recent successful checks:
+
+- `npm run check`
+- `npm run build`
+
+They passed after:
+
+- adding popup + monitor tab
+- storage-backed direct-download state
+- action badge updates
+- course-page status badge updates
+- stable ordering of active download cards
+
+==================================================
+10. IF THE NEXT CHAT CONTINUES THIS WORK
+==================================================
+
+Good next steps would be:
+
+1. Improve capture reliability on edge-case lectures.
+2. Add pause/cancel controls if desired.
+3. Consider notifications for completion/failure.
+4. Consider persisting enough queue state to survive service-worker sleeps or
+   extension restarts more gracefully.
+5. Investigate whether any portion of Chrome-native progress visibility can be
+   improved without abandoning the current internal remux pipeline.
+
+==================================================
+11. STARTING PROMPT FOR NEXT CHAT
+==================================================
+
+Suggested opener:
+
+"Read C:\myProgramWithCodex\hsu_ecx_CustomedForMe\next_chat_handoff.txt first.
+Keep `열기 / 복사 / 다운로드` intact, keep `직접다운` separate, and inspect the
+current direct-download pipeline plus popup/monitor UI. The direct download
+already works to MP4 and now has queue/capture/download status UI."

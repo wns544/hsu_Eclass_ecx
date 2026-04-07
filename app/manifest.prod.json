@@ -65,7 +65,8 @@
             ],
             "js": [
                 "/content_scripts/viewer/index.js"
-            ]
+            ],
+            "run_at": "document_start"
         }
     ]
 }

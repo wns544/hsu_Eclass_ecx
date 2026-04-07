@@ -2,6 +2,8 @@ const params = new URLSearchParams(location.search);
 const autoStart = params.get("ecxAutoStart") === "1";
 const autoClose = params.get("ecxAutoClose") === "1";
 const captureJobId = params.get("ecxCaptureJobId");
+const hintedPlaylistUrls: string[] = [];
+const hintedPlaylistUrlSet = new Set<string>();
 
 type DoneMessage = {
     type: "done";
@@ -12,11 +14,31 @@ type DoneMessage = {
     totalBytes?: number;
 };
 
+type PlaylistDetectionSource = "hinted" | "document" | "resource" | "video";
+
+type PlaylistCaptureMode = "passive" | "autoplay" | "fallback_wait";
+
+type PlaylistDetection = {
+    url: string;
+    source: PlaylistDetectionSource;
+};
+
+type PlaylistCaptureResult = {
+    playlistUrl: string;
+    captureMode: PlaylistCaptureMode;
+    detectionSource: PlaylistDetectionSource;
+    autoplayAttempted: boolean;
+    autoplayInteracted: boolean;
+};
+
+installPassiveCaptureHooks();
+
 if (params.get("ecxDirectDownload") === "1") {
     void startDirectDownloadFlow();
 }
 
 async function startDirectDownloadFlow() {
+    await waitForDocumentBody();
     const status = createStatus();
     const keepAlivePort = captureJobId
         ? chrome.runtime.connect({ name: "ECX_DIRECT_CAPTURE_KEEPALIVE" })
@@ -28,12 +50,8 @@ async function startDirectDownloadFlow() {
             : "\uC7AC\uC0DD \uBC84\uD2BC\uC744 \uB204\uB974\uBA74 \uC9C1\uC811 \uB2E4\uC6B4\uB85C\uB4DC\uB97C \uC2DC\uB3C4\uD569\uB2C8\uB2E4.",
     );
 
-    if (autoStart) {
-        void autoStartPlayback(status);
-    }
-
-    const playlistUrl = await waitForPlaylist(status);
-    if (!playlistUrl) {
+    const capture = await waitForPlaylist(status);
+    if (!capture) {
         setStatus(status, "\uC2A4\uD2B8\uB9BC \uC8FC\uC18C\uB97C \uCC3E\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.");
         if (captureJobId) {
             await chrome.runtime.sendMessage({
@@ -54,9 +72,13 @@ async function startDirectDownloadFlow() {
         const res = await chrome.runtime.sendMessage({
             type: "CAPTURE_DIRECT_DOWNLOAD_STREAM",
             jobId: captureJobId,
-            playlistUrl,
+            playlistUrl: capture.playlistUrl,
             pageUrl: location.href,
             filename: readTitle(),
+            captureMode: capture.captureMode,
+            detectionSource: capture.detectionSource,
+            autoplayAttempted: capture.autoplayAttempted,
+            autoplayInteracted: capture.autoplayInteracted,
         }) as { ok?: boolean, error?: string };
 
         if (!res?.ok) {
@@ -99,29 +121,62 @@ async function startDirectDownloadFlow() {
 
     port.postMessage({
         type: "DIRECT_DOWNLOAD_START",
-        playlistUrl,
+        playlistUrl: capture.playlistUrl,
         filename: readTitle(),
         pageUrl: location.href,
         autoCloseTab: autoClose,
     });
 }
 
-async function waitForPlaylist(status: HTMLDivElement) {
+async function waitForPlaylist(status: HTMLDivElement): Promise<PlaylistCaptureResult | null> {
     const existing = findStreamUrl();
     if (existing) {
         setStatus(status, "\uC2A4\uD2B8\uB9BC \uC8FC\uC18C \uD655\uC778\uB428. \uB2E4\uC6B4\uB85C\uB4DC \uC900\uBE44 \uC911...");
-        return existing;
+        return {
+            playlistUrl: existing.url,
+            captureMode: "passive",
+            detectionSource: existing.source,
+            autoplayAttempted: false,
+            autoplayInteracted: false,
+        };
     }
 
-    const deadline = Date.now() + 10 * 60_000;
-    while (Date.now() < deadline) {
+    setStatus(status, "\uC7AC\uC0DD \uC2DC\uB3C4 \uC5C6\uC774 \uC2A4\uD2B8\uB9BC \uC8FC\uC18C\uB97C \uCC3E\uB294 \uC911...");
+    const passiveDeadline = Date.now() + (autoStart ? 5000 : 10 * 60_000);
+    while (Date.now() < passiveDeadline) {
         const match = findStreamUrl();
         if (match) {
             setStatus(status, "\uC2A4\uD2B8\uB9BC \uC8FC\uC18C \uD655\uC778\uB428. \uB2E4\uC6B4\uB85C\uB4DC \uC900\uBE44 \uC911...");
-            return match;
+            return {
+                playlistUrl: match.url,
+                captureMode: "passive",
+                detectionSource: match.source,
+                autoplayAttempted: false,
+                autoplayInteracted: false,
+            };
         }
-        await delay(1000);
+        await delay(500);
     }
+
+    if (!autoStart) {
+        return null;
+    }
+
+    setStatus(status, "\uBB34\uC7AC\uC0DD \uD655\uC778\uC740 \uC2E4\uD328. \uC790\uB3D9 \uC7AC\uC0DD\uB85C \uB2E4\uC2DC \uC2DC\uB3C4 \uC911...");
+    const playbackResult = await autoStartPlayback(status);
+
+    const match = findStreamUrl();
+    if (match) {
+        setStatus(status, "\uC2A4\uD2B8\uB9BC \uC8FC\uC18C \uD655\uC778\uB428. \uB2E4\uC6B4\uB85C\uB4DC \uC900\uBE44 \uC911...");
+        return {
+            playlistUrl: match.url,
+            captureMode: playbackResult.interacted ? "autoplay" : "fallback_wait",
+            detectionSource: match.source,
+            autoplayAttempted: playbackResult.attempted,
+            autoplayInteracted: playbackResult.interacted,
+        };
+    }
+
     return null;
 }
 
@@ -170,18 +225,24 @@ function formatBytes(bytes: number) {
 
 async function autoStartPlayback(status: HTMLDivElement) {
     const deadline = Date.now() + 20_000;
+    let attempted = false;
+    let interacted = false;
     while (Date.now() < deadline) {
         if (findStreamUrl()) {
-            return;
+            return { attempted, interacted };
         }
 
         const started = await tryStartPlayback();
         if (started) {
+            attempted = true;
+            interacted = true;
             setStatus(status, "\uC790\uB3D9 \uC7AC\uC0DD \uC2DC\uB3C4 \uC911...");
         }
 
         await delay(1000);
     }
+
+    return { attempted, interacted };
 }
 
 async function tryStartPlayback() {
@@ -228,29 +289,147 @@ async function tryStartPlayback() {
     return interacted;
 }
 
-function findStreamUrl() {
+function findStreamUrl(): PlaylistDetection | null {
+    const hinted = findHintedPlaylistUrl();
+    if (hinted) {
+        return {
+            url: hinted,
+            source: "hinted",
+        };
+    }
+
+    const fromDocument = findDocumentPlaylistUrl();
+    if (fromDocument) {
+        rememberPlaylistUrl(fromDocument);
+        return {
+            url: fromDocument,
+            source: "document",
+        };
+    }
+
     const entries = performance.getEntriesByType("resource") as PerformanceResourceTiming[];
     const urls = entries.map(entry => entry.name).reverse();
     for (const url of urls) {
         if (isPlaylistUrl(url)) {
-            return url;
+            rememberPlaylistUrl(url);
+            return {
+                url,
+                source: "resource",
+            };
         }
     }
 
     const videos = [...document.querySelectorAll("video")] as HTMLVideoElement[];
     for (const video of videos) {
         if (isPlaylistUrl(video.currentSrc)) {
-            return video.currentSrc;
+            rememberPlaylistUrl(video.currentSrc);
+            return {
+                url: video.currentSrc,
+                source: "video",
+            };
         }
         if (isPlaylistUrl(video.src)) {
-            return video.src;
+            rememberPlaylistUrl(video.src);
+            return {
+                url: video.src,
+                source: "video",
+            };
         }
 
         const sourceUrl = [...video.querySelectorAll("source")]
             .map(item => item.src)
             .find(isPlaylistUrl);
         if (sourceUrl) {
-            return sourceUrl;
+            rememberPlaylistUrl(sourceUrl);
+            return {
+                url: sourceUrl,
+                source: "video",
+            };
+        }
+    }
+
+    return null;
+}
+
+function installPassiveCaptureHooks() {
+    try {
+        const observer = new PerformanceObserver((list) => {
+            for (const entry of list.getEntries()) {
+                rememberPlaylistUrl(entry.name);
+            }
+        });
+        observer.observe({
+            entryTypes: ["resource"],
+        });
+    } catch {
+        // Ignore observer setup failures and rely on polling.
+    }
+}
+
+function findHintedPlaylistUrl() {
+    return hintedPlaylistUrls.at(-1) ?? null;
+}
+
+function rememberPlaylistUrl(url: string) {
+    if (!isPlaylistUrl(url)) {
+        return;
+    }
+
+    const normalized = new URL(url, location.href).toString();
+    if (hintedPlaylistUrlSet.has(normalized)) {
+        return;
+    }
+
+    hintedPlaylistUrlSet.add(normalized);
+    hintedPlaylistUrls.push(normalized);
+}
+
+function findDocumentPlaylistUrl() {
+    for (const selector of ["video", "source", "iframe", "[src]", "[href]", "[data-src]"]) {
+        for (const element of document.querySelectorAll<HTMLElement>(selector)) {
+            const candidate = element.getAttribute("src")
+                || element.getAttribute("href")
+                || element.getAttribute("data-src")
+                || "";
+            if (isPlaylistUrl(candidate)) {
+                return new URL(candidate, location.href).toString();
+            }
+        }
+    }
+
+    for (const script of document.querySelectorAll("script")) {
+        const text = script.textContent;
+        const matched = text ? extractPlaylistUrl(text) : null;
+        if (matched) {
+            return matched;
+        }
+    }
+
+    return null;
+}
+
+function extractPlaylistUrl(text: string) {
+    if (!text.includes(".m3u8")) {
+        return null;
+    }
+
+    const normalized = text
+        .replace(/\\u002F/gi, "/")
+        .replace(/\\\//g, "/");
+    const patterns = [
+        /https?:\/\/[^\s"'`<>\\]+\.m3u8[^\s"'`<>\\]*/ig,
+        /(?:\/|\.\.?\/)[^\s"'`<>\\]+\.m3u8[^\s"'`<>\\]*/ig,
+    ];
+
+    for (const pattern of patterns) {
+        const matched = normalized.match(pattern);
+        if (!matched) {
+            continue;
+        }
+
+        const found = matched.find(candidate => isPlaylistUrl(candidate));
+        if (found) {
+            return new URL(found, location.href).toString();
         }
     }
 
@@ -277,6 +456,25 @@ function isPlaylistUrl(url: string | null | undefined): url is string {
 
 function delay(ms: number) {
     return new Promise(resolve => window.setTimeout(resolve, ms));
+}
+
+async function waitForDocumentBody() {
+    if (document.body) {
+        return;
+    }
+
+    await new Promise<void>((resolve) => {
+        const onReady = () => {
+            if (!document.body) {
+                return;
+            }
+            document.removeEventListener("readystatechange", onReady);
+            resolve();
+        };
+
+        document.addEventListener("readystatechange", onReady);
+        onReady();
+    });
 }
 
 function isVisibleElement(el: HTMLElement) {

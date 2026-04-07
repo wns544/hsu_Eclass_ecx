@@ -201,3 +201,251 @@
 .ecx-dd-card[data-phase="failed"] .ecx-dd-progress-fill {
     background: linear-gradient(90deg, #ef4444, #f97316);
 }
+
+.ecx-log-section {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.ecx-log-section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.ecx-log-section-title {
+    margin: 0;
+    color: #132238;
+    font-size: 15px;
+    font-weight: 700;
+}
+
+.ecx-log-section-count {
+    min-width: 28px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.08);
+    color: #475569;
+    font-size: 12px;
+    font-weight: 700;
+    text-align: center;
+}
+
+.ecx-log-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.ecx-log-group {
+    overflow: hidden;
+    border: 1px solid rgba(23, 37, 84, 0.08);
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.96);
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+}
+
+.ecx-log-group-summary {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px;
+    cursor: pointer;
+    list-style: none;
+}
+
+.ecx-log-group-summary::-webkit-details-marker {
+    display: none;
+}
+
+.ecx-log-group-summary::after {
+    content: "\25BE";
+    margin-left: 8px;
+    color: #64748b;
+    font-size: 12px;
+    line-height: 1;
+    transition: transform 0.18s ease;
+}
+
+.ecx-log-group-copy {
+    min-width: 0;
+    flex: 1;
+}
+
+.ecx-log-group-course {
+    color: #728198;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.ecx-log-group-title {
+    margin-top: 4px;
+    color: #11233d;
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.4;
+    word-break: break-word;
+}
+
+.ecx-log-group-message {
+    margin-top: 8px;
+    color: #24364e;
+    font-size: 13px;
+    line-height: 1.6;
+    word-break: break-word;
+}
+
+.ecx-log-group-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.ecx-log-group-tag {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: rgba(14, 165, 233, 0.08);
+    color: #0f6fa8;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.4;
+}
+
+.ecx-log-group-tag-capture {
+    background: rgba(37, 99, 235, 0.12);
+    color: #1d4ed8;
+}
+
+.ecx-log-group-meta {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+    min-width: 104px;
+}
+
+.ecx-log-group-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.08);
+    color: #475569;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.4;
+}
+
+.ecx-log-group-body {
+    padding: 0 14px 14px;
+    border-top: 1px solid rgba(226, 232, 240, 0.8);
+}
+
+.ecx-log-group[open] .ecx-log-group-summary::after {
+    transform: rotate(180deg);
+}
+
+.ecx-log-group-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.ecx-log-item {
+    padding: 12px;
+    border: 1px solid rgba(23, 37, 84, 0.06);
+    border-radius: 14px;
+    background: #f8fbff;
+}
+
+.ecx-log-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.ecx-log-level,
+.ecx-log-time,
+.ecx-log-tag {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.4;
+}
+
+.ecx-log-level {
+    background: rgba(37, 99, 235, 0.1);
+    color: #1d4ed8;
+}
+
+.ecx-log-time {
+    background: #f2f5f9;
+    color: #596881;
+}
+
+.ecx-log-message {
+    margin-top: 10px;
+    color: #24364e;
+    font-size: 13px;
+    line-height: 1.6;
+    word-break: break-word;
+}
+
+.ecx-log-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.ecx-log-tag {
+    background: rgba(14, 165, 233, 0.08);
+    color: #0f6fa8;
+    font-weight: 600;
+}
+
+.ecx-log-empty {
+    padding: 18px;
+    border: 1px dashed rgba(23, 37, 84, 0.18);
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.65);
+    color: #5a6981;
+    font-size: 13px;
+    line-height: 1.6;
+    text-align: center;
+}
+
+.ecx-log-item[data-level="warn"] .ecx-log-level {
+    background: rgba(245, 158, 11, 0.18);
+    color: #b45309;
+}
+
+.ecx-log-item[data-level="error"] .ecx-log-level {
+    background: rgba(239, 68, 68, 0.16);
+    color: #b91c1c;
+}
+
+.ecx-log-group[data-level="warn"] .ecx-log-group-tag-capture,
+.ecx-log-group[data-level="warn"] > .ecx-log-group-summary .ecx-log-level {
+    background: rgba(245, 158, 11, 0.18);
+    color: #b45309;
+}
+
+.ecx-log-group[data-level="error"] .ecx-log-group-tag-capture,
+.ecx-log-group[data-level="error"] > .ecx-log-group-summary .ecx-log-level {
+    background: rgba(239, 68, 68, 0.16);
+    color: #b91c1c;
+}

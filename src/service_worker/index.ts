@@ -9,6 +9,15 @@ import {
     isActiveJob,
     sortJobs,
 } from "#/shared/direct-download-state";
+import {
+    DirectDownloadCaptureMode,
+    DirectDownloadDetectionSource,
+    DIRECT_DOWNLOAD_LOG_KEY,
+    DirectDownloadLogEntry,
+    DirectDownloadLogLevel,
+    DirectDownloadLogSnapshot,
+    MAX_DIRECT_DOWNLOAD_LOG_ENTRIES,
+} from "#/shared/direct-download-log";
 
 type DirectDownloadMessage = {
     type: "DIRECT_DOWNLOAD_START";
@@ -30,12 +39,24 @@ type OpenDirectDownloadMonitorMessage = {
     focus?: boolean;
 };
 
+type ExportDirectDownloadLogsMessage = {
+    type: "EXPORT_DIRECT_DOWNLOAD_LOGS";
+};
+
+type ClearDirectDownloadLogsMessage = {
+    type: "CLEAR_DIRECT_DOWNLOAD_LOGS";
+};
+
 type CaptureDirectDownloadMessage = {
     type: "CAPTURE_DIRECT_DOWNLOAD_STREAM";
     jobId?: string;
     playlistUrl: string;
     pageUrl?: string;
     filename?: string;
+    captureMode?: DirectDownloadCaptureMode;
+    detectionSource?: DirectDownloadDetectionSource;
+    autoplayAttempted?: boolean;
+    autoplayInteracted?: boolean;
 };
 
 type CaptureDirectDownloadFailedMessage = {
@@ -124,6 +145,7 @@ const DIRECT_DOWNLOAD_MONITOR_QUERY = `${chrome.runtime.getURL("direct_downloads
 let creatingOffscreenDocument: Promise<void> | null = null;
 let activeCaptureJobId: string | null = null;
 let stateFlushTimer: ReturnType<typeof setTimeout> | null = null;
+let logFlushTimer: ReturnType<typeof setTimeout> | null = null;
 let directDownloadMonitorTabId: number | null = null;
 
 const activeDownloadCleanups = new Map<number, ReturnType<typeof setTimeout>>();
@@ -131,10 +153,12 @@ const captureJobQueue: string[] = [];
 const captureJobs = new Map<string, CaptureJob>();
 const captureJobTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
 const directDownloadJobs = new Map<string, DirectDownloadJobState>();
+const directDownloadLogs: DirectDownloadLogEntry[] = [];
 const downloadSessionLookup = new Map<number, string>();
 const downloadJobLookup = new Map<number, string>();
 
 void recoverPersistedDirectDownloadState();
+void recoverPersistedDirectDownloadLogs();
 
 chrome.downloads.onChanged.addListener((delta) => {
     const state = delta.state?.current;
@@ -146,11 +170,17 @@ chrome.downloads.onChanged.addListener((delta) => {
             statusText: "\uD30C\uC77C \uC800\uC7A5 \uC644\uB8CC",
             progressPercent: 100,
         });
+        logDirectDownloadEvent("info", "Chrome reported download complete.", jobId);
         downloadJobLookup.delete(delta.id);
     } else if (state === "interrupted" && jobId) {
         markJobFailed(
             jobId,
             delta.error?.current || "\uBE0C\uB77C\uC6B0\uC800 \uC800\uC7A5\uC774 \uC911\uB2E8\uB418\uC5C8\uC2B5\uB2C8\uB2E4.",
+        );
+        logDirectDownloadEvent(
+            "error",
+            `Chrome reported download interrupted${delta.error?.current ? `: ${delta.error.current}` : "."}`,
+            jobId,
         );
         downloadJobLookup.delete(delta.id);
     }
@@ -248,6 +278,34 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true;
     }
 
+    if (message.type === "EXPORT_DIRECT_DOWNLOAD_LOGS") {
+        void exportDirectDownloadLogs(message as ExportDirectDownloadLogsMessage)
+            .then((result) => sendResponse(result))
+            .catch((error) => {
+                const text = error instanceof Error ? error.message : "Failed to export direct-download logs.";
+                sendResponse({
+                    ok: false,
+                    error: text,
+                });
+            });
+
+        return true;
+    }
+
+    if (message.type === "CLEAR_DIRECT_DOWNLOAD_LOGS") {
+        void clearDirectDownloadLogs(message as ClearDirectDownloadLogsMessage)
+            .then((result) => sendResponse(result))
+            .catch((error) => {
+                const text = error instanceof Error ? error.message : "Failed to clear direct-download logs.";
+                sendResponse({
+                    ok: false,
+                    error: text,
+                });
+            });
+
+        return true;
+    }
+
     if (message.type === "CAPTURE_DIRECT_DOWNLOAD_STREAM") {
         void handleCapturedDirectDownload(message as CaptureDirectDownloadMessage)
             .then((result) => sendResponse(result))
@@ -325,6 +383,8 @@ async function executeDirectDownloadTask(task: DirectDownloadTask, onStatus?: (t
             throw new Error("Playlist URL was not found. Please start playback and try again.");
         }
 
+        logDirectDownloadEvent("info", "Playlist analysis started.", jobId);
+
         report({
             phase: "analyzing",
             statusText: "\uD50C\uB808\uC77C\uB9AC\uC2A4\uD2B8\uB97C \uBD84\uC11D\uD558\uB294 \uC911...",
@@ -339,6 +399,11 @@ async function executeDirectDownloadTask(task: DirectDownloadTask, onStatus?: (t
         if (parts.segments.length === 0) {
             throw new Error("No segments found.");
         }
+        logDirectDownloadEvent(
+            "info",
+            `Playlist resolved. segments=${parts.segments.length}${parts.initSegmentUrl ? ", init=yes" : ""}`,
+            jobId,
+        );
 
         const transmuxSession = parts.container === "ts"
             ? createTransmuxSession()
@@ -393,6 +458,11 @@ async function executeDirectDownloadTask(task: DirectDownloadTask, onStatus?: (t
 
         const finalContainer = transmuxSession ? "mp4" : parts.container;
         const finalMimeType = transmuxSession ? "video/mp4" : parts.mimeType;
+        logDirectDownloadEvent(
+            "info",
+            `Media download finished. container=${finalContainer}, bytes=${stats.totalBytes}`,
+            jobId,
+        );
         report({
             phase: "saving",
             statusText: "\uD30C\uC77C \uC800\uC7A5 \uC900\uBE44 \uC911...",
@@ -430,6 +500,7 @@ async function executeDirectDownloadTask(task: DirectDownloadTask, onStatus?: (t
         }
 
         trackOffscreenDownload(downloadId, sessionId, jobId);
+        logDirectDownloadEvent("info", `Chrome download started. downloadId=${downloadId}`, jobId);
         report({
             phase: "saving",
             statusText: "\uD06C\uB86C \uC800\uC7A5 \uCC98\uB9AC \uC911...",
@@ -452,6 +523,11 @@ async function executeDirectDownloadTask(task: DirectDownloadTask, onStatus?: (t
         if (jobId) {
             markJobFailed(jobId, error instanceof Error ? error.message : "\uB2E4\uC6B4\uB85C\uB4DC \uC2E4\uD328");
         }
+        logDirectDownloadEvent(
+            "error",
+            error instanceof Error ? error.message : "Direct download failed.",
+            jobId,
+        );
         throw error;
     }
 }
@@ -805,6 +881,7 @@ async function startDirectDownloadJob(message: StartDirectDownloadJobMessage, se
         windowId: sender.tab?.windowId,
     });
     captureJobQueue.push(jobId);
+    logDirectDownloadEvent("info", "Job queued for direct download.", jobId);
     refreshQueuePositions();
     scheduleStateFlush();
     void ensureDirectDownloadMonitorTab(false, sender.tab?.windowId);
@@ -832,6 +909,7 @@ async function processCaptureQueue() {
     }
 
     activeCaptureJobId = jobId;
+    logDirectDownloadEvent("info", "Capture phase started.", jobId);
     updateJobState(jobId, {
         phase: "capturing",
         statusText: "\uC228\uC740 \uC7AC\uC0DD \uD0ED\uC5D0\uC11C \uC2A4\uD2B8\uB9BC \uC8FC\uC18C\uB97C \uCEA1\uCC98\uD558\uB294 \uC911...",
@@ -862,8 +940,9 @@ async function processCaptureQueue() {
 
         updateJobState(jobId, {
             phase: "capturing",
-            statusText: "\uC790\uB3D9 \uC7AC\uC0DD\uC744 \uC2DC\uB3C4\uD558\uACE0 \uC2A4\uD2B8\uB9BC \uC8FC\uC18C\uB97C \uD655\uC778\uD558\uB294 \uC911...",
+            statusText: "\uC0C8 \uD0ED\uC5D0\uC11C \uC2A4\uD2B8\uB9BC \uC8FC\uC18C\uB97C \uD655\uC778\uD558\uB294 \uC911...",
         });
+        logDirectDownloadEvent("info", `Capture tab opened${tab.id !== undefined ? ` (tabId=${tab.id})` : ""}.`, jobId);
     } catch (error) {
         await failCaptureJob(
             jobId,
@@ -887,6 +966,15 @@ async function handleCapturedDirectDownload(message: CaptureDirectDownloadMessag
     const filename = job?.filename || normalizeTitle(message.filename || "video");
     if (message.jobId) {
         await completeCaptureJob(message.jobId);
+        logDirectDownloadEvent(
+            "info",
+            buildCaptureSuccessMessage(message),
+            message.jobId,
+            {
+                captureMode: message.captureMode,
+                detectionSource: message.detectionSource,
+            },
+        );
         updateJobState(message.jobId, {
             phase: "analyzing",
             statusText: "\uC2A4\uD2B8\uB9BC \uCEA1\uCC98 \uC644\uB8CC. \uD50C\uB808\uC77C\uB9AC\uC2A4\uD2B8 \uBD84\uC11D \uC900\uBE44 \uC911...",
@@ -912,6 +1000,21 @@ async function handleCapturedDirectDownload(message: CaptureDirectDownloadMessag
     return {
         ok: true,
     };
+}
+
+function buildCaptureSuccessMessage(message: CaptureDirectDownloadMessage) {
+    const source = message.detectionSource ? ` source=${message.detectionSource}` : "";
+
+    switch (message.captureMode) {
+        case "passive":
+            return `Playlist capture succeeded without autoplay.${source}`;
+        case "autoplay":
+            return `Playlist capture succeeded after autoplay.${source}${message.autoplayInteracted ? ", interaction=yes" : ""}`;
+        case "fallback_wait":
+            return `Playlist capture succeeded after fallback wait.${source}${message.autoplayAttempted ? ", autoplayTried=yes" : ""}${message.autoplayInteracted ? ", interaction=yes" : ", interaction=no"}`;
+        default:
+            return `Playlist capture succeeded.${source}`;
+    }
 }
 
 async function handleCaptureFailure(message: CaptureDirectDownloadFailedMessage, sender: chrome.runtime.MessageSender) {
@@ -942,6 +1045,7 @@ async function failCaptureJob(jobId: string, reason: string, tabId?: number, clo
     captureJobs.delete(jobId);
     refreshQueuePositions();
     markJobFailed(jobId, reason);
+    logDirectDownloadEvent("error", `Capture failed: ${reason}`, jobId);
     if (closeTab) {
         await closeDownloadTab(tabId ?? job?.tabId, true);
     }
@@ -1121,6 +1225,151 @@ async function recoverPersistedDirectDownloadState() {
     }
 
     await flushDirectDownloadState();
+}
+
+async function recoverPersistedDirectDownloadLogs() {
+    const stored = await chrome.storage.local.get(DIRECT_DOWNLOAD_LOG_KEY);
+    const snapshot = stored[DIRECT_DOWNLOAD_LOG_KEY] as DirectDownloadLogSnapshot | undefined;
+    if (!snapshot?.entries?.length) {
+        return;
+    }
+
+    directDownloadLogs.splice(0, directDownloadLogs.length, ...snapshot.entries);
+}
+
+function logDirectDownloadEvent(
+    level: DirectDownloadLogLevel,
+    message: string,
+    jobId?: string,
+    details?: {
+        captureMode?: DirectDownloadCaptureMode;
+        detectionSource?: DirectDownloadDetectionSource;
+    },
+) {
+    const job = jobId ? directDownloadJobs.get(jobId) : null;
+
+    directDownloadLogs.push({
+        id: crypto.randomUUID(),
+        timestamp: Date.now(),
+        level,
+        message,
+        jobId,
+        title: job?.title,
+        courseName: job?.courseName,
+        phase: job?.phase,
+        captureMode: details?.captureMode,
+        detectionSource: details?.detectionSource,
+    });
+
+    if (directDownloadLogs.length > MAX_DIRECT_DOWNLOAD_LOG_ENTRIES) {
+        directDownloadLogs.splice(0, directDownloadLogs.length - MAX_DIRECT_DOWNLOAD_LOG_ENTRIES);
+    }
+
+    scheduleLogFlush();
+}
+
+function scheduleLogFlush() {
+    if (logFlushTimer) {
+        return;
+    }
+
+    logFlushTimer = setTimeout(() => {
+        logFlushTimer = null;
+        void flushDirectDownloadLogs();
+    }, 200);
+}
+
+async function flushDirectDownloadLogs() {
+    const snapshot: DirectDownloadLogSnapshot = {
+        updatedAt: Date.now(),
+        entries: [...directDownloadLogs],
+    };
+
+    await chrome.storage.local.set({
+        [DIRECT_DOWNLOAD_LOG_KEY]: snapshot,
+    });
+}
+
+async function exportDirectDownloadLogs(_message: ExportDirectDownloadLogsMessage) {
+    const text = buildDirectDownloadLogText();
+    if (!text.trim()) {
+        throw new Error("No direct-download logs are available yet.");
+    }
+
+    const stamp = formatExportStamp(new Date());
+    const downloadId = await chrome.downloads.download({
+        url: `data:text/plain;charset=utf-8,${encodeURIComponent(text)}`,
+        filename: `hsu-ecx-direct-download-log-${stamp}.txt`,
+        saveAs: false,
+    });
+
+    if (downloadId === undefined) {
+        throw new Error("Download API did not return a download id.");
+    }
+
+    return {
+        ok: true,
+        downloadId,
+    };
+}
+
+async function clearDirectDownloadLogs(_message: ClearDirectDownloadLogsMessage) {
+    directDownloadLogs.splice(0, directDownloadLogs.length);
+    await flushDirectDownloadLogs();
+
+    return {
+        ok: true,
+        cleared: true,
+    };
+}
+
+function buildDirectDownloadLogText() {
+    const lines = [
+        "hsu-ecx direct download logs",
+        `generatedAt=${new Date().toISOString()}`,
+        `entries=${directDownloadLogs.length}`,
+        "",
+    ];
+
+    for (const entry of directDownloadLogs) {
+        const parts = [
+            new Date(entry.timestamp).toISOString(),
+            entry.level.toUpperCase(),
+        ];
+
+        if (entry.courseName) {
+            parts.push(entry.courseName);
+        }
+        if (entry.title) {
+            parts.push(entry.title);
+        }
+        if (entry.jobId) {
+            parts.push(`job=${entry.jobId}`);
+        }
+        if (entry.phase) {
+            parts.push(`phase=${entry.phase}`);
+        }
+        if (entry.captureMode) {
+            parts.push(`capture=${entry.captureMode}`);
+        }
+        if (entry.detectionSource) {
+            parts.push(`source=${entry.detectionSource}`);
+        }
+
+        lines.push(`[${parts.join(" | ")}] ${entry.message}`);
+    }
+
+    return lines.join("\r\n");
+}
+
+function formatExportStamp(date: Date) {
+    const yyyy = String(date.getFullYear());
+    const mm = String(date.getMonth() + 1).padStart(2, "0");
+    const dd = String(date.getDate()).padStart(2, "0");
+    const hh = String(date.getHours()).padStart(2, "0");
+    const mi = String(date.getMinutes()).padStart(2, "0");
+    const ss = String(date.getSeconds()).padStart(2, "0");
+    return `${yyyy}${mm}${dd}-${hh}${mi}${ss}`;
 }
 
 async function ensureDirectDownloadMonitorTab(focus: boolean, preferredWindowId?: number) {

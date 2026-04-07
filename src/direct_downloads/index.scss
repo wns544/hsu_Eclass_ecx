@@ -28,6 +28,10 @@ body {
 }
 
 .ecx-monitor-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
     padding: 24px 26px;
     border: 1px solid rgba(23, 37, 84, 0.08);
     border-radius: 24px;
@@ -65,17 +69,52 @@ body {
     gap: 20px;
 }
 
+.ecx-monitor-logs {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.ecx-monitor-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.ecx-monitor-secondary {
+    padding: 10px 14px;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.86);
+    color: #29435f;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.ecx-monitor-secondary:disabled {
+    opacity: 0.55;
+    cursor: default;
+}
+
 @media (max-width: 720px) {
     #app {
         padding: 18px 14px 30px;
     }
 
     .ecx-monitor-header {
+        flex-direction: column;
+        align-items: stretch;
         padding: 18px;
         border-radius: 18px;
     }
 
     .ecx-monitor-title {
         font-size: 24px;
+    }
+
+    .ecx-monitor-actions {
+        justify-content: flex-start;
     }
 }

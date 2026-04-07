@@ -1,12 +1,8 @@
 import { buildSync, BuildOptions } from "esbuild";
 import { glob } from "glob";
-import path from "path";
-
 const src = "./src";
 const dest = "./dist";
-const entry = "index.ts";
-
-const entryPoints = glob.sync(path.join(src, "**", entry));
+const entryPoints = glob.sync(`${src}/**/index.ts`, { posix: true });
 const options: BuildOptions = {
     entryPoints,
     outdir: dest,

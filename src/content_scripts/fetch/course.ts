@@ -11,6 +11,7 @@ export interface CourseVideo {
     laby: number | null;
     from: string;
     due: string;
+    duration: number | null;
 }
 
 export interface CourseAssign {
@@ -88,14 +89,15 @@ export async function fetchCourseCurrent(id: number): Promise<CourseCurrent> {
 
     for (const video of videos) {
         const title = video.querySelector("span.instancename")!.firstChild!.textContent!.trim();
-        const [from, due] = video.querySelector("span.text-ubstrap")!.textContent!.split("~").map(
-            s => new Date(s).toISOString(),
-        );
+        const dateText = video.querySelector("span.text-ubstrap")!.textContent!.trim();
+        const durationText = video.querySelector("span.text-info")?.textContent?.trim() ?? "";
+        const [from, due] = parseDateRange(dateText);
+        const duration = parseDuration(durationText);
 
         const a = video.querySelector("a");
         if (!a) {
             res.video.push({
-                title, from, due,
+                title, from, due, duration,
                 id: null, laby: null,
             });
             continue;
@@ -112,6 +114,7 @@ export async function fetchCourseCurrent(id: number): Promise<CourseCurrent> {
             laby,
             from,
             due,
+            duration,
         });
     }
 
@@ -142,4 +145,28 @@ export async function fetchCourseCurrent(id: number): Promise<CourseCurrent> {
     }
 
     return res;
+}
+
+function parseDateRange(text: string): [string, string] {
+    const matches = [...text.matchAll(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/g)].map(match => match[0]);
+    if (matches.length < 2) {
+        throw new Error(`Failed to parse date range: ${text}`);
+    }
+    return [new Date(matches[0]).toISOString(), new Date(matches[1]).toISOString()];
+}
+
+function parseDuration(text: string): number | null {
+    const value = text.replace(/^,\s*/, "").trim();
+    if (!/^\d{1,2}:\d{2}(?::\d{2})?$/.test(value)) {
+        return null;
+    }
+
+    const parts = value.split(":").map(Number);
+    if (parts.length === 3) {
+        const [h, m, s] = parts;
+        return h * 3600 + m * 60 + s;
+    }
+
+    const [m, s] = parts;
+    return m * 60 + s;
 }

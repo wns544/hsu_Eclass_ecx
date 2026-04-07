@@ -15,7 +15,7 @@ export interface VideoProps extends React.HTMLAttributes<HTMLDivElement> {
     info: VideoInfo;
 }
 
-function Video({ video: { title, id, laby, from: fromIso, due: dueIso }, info, ...props }: VideoProps) {
+function Video({ video: { title, id, laby, from: fromIso, due: dueIso, duration }, info, ...props }: VideoProps) {
     if (title !== info.title) {
         return null;
     }
@@ -36,6 +36,13 @@ function Video({ video: { title, id, laby, from: fromIso, due: dueIso }, info, .
                 <Duration className="ms-2" from={from} due={due} />
             </div>
             <Progress now={actual} max={required} />
+            {info && (
+                <div className="small text-body-secondary mt-1">
+                    시청 {formatSec(actual, false)}
+                    {duration !== null && ` / ${formatSec(duration, false)}`}
+                    {` / 출석 기준 ${formatSec(required, false)}`}
+                </div>
+            )}
         </div>
     );
 }
@@ -50,12 +57,13 @@ function Status({ actual, required, from, due }: { actual: number, required: num
     } else if (now > due.getTime()) {
         return <Badge bg="danger">결석</Badge>;
     }
-    return <Badge>기간</Badge>;
+    return <Badge>기간 중</Badge>;
 }
 
 function Progress({ now, max }: { now: number | null, max: number | null }) {
     const loaded = now !== null && max !== null;
-    const rem = loaded ? Math.max(max - now, 0) : null;
+    const current = loaded ? Math.min(now, max) : null;
+    const rem = loaded ? Math.max(max - current!, 0) : null;
 
     const nowLabel = loaded && formatSec(now, false);
     const remLabel = loaded && `-${formatSec(rem!, false)}`;
@@ -63,7 +71,7 @@ function Progress({ now, max }: { now: number | null, max: number | null }) {
     return (
         <ProgressBar>
             <ProgressBar
-                now={now ?? 0} max={max ?? 1}
+                now={current ?? 0} max={max ?? 1}
                 variant={rem === 0 ? "success" : "primary"}
                 label={<b>{nowLabel}</b>} />
             <ProgressBar

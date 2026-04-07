@@ -8,8 +8,8 @@ const dest = "./live";
 const entry = "index.ts";
 const devEntry = "index.dev.ts";
 
-const entryPath = path.join(src, "**", entry);
-const devEntryPath = path.join(src, "**", devEntry);
+const entryPath = `${src}/**/${entry}`;
+const devEntryPath = `${src}/**/${devEntry}`;
 
 const options: BuildOptions = {
     outdir: dest,
@@ -23,7 +23,7 @@ const options: BuildOptions = {
 let ctx: BuildContext | null = null;
 
 async function watch() {
-    const entryPoints = glob.sync([entryPath, devEntryPath]);
+    const entryPoints = glob.sync([entryPath, devEntryPath], { posix: true });
     ctx = await context({
         entryPoints,
         ...options,

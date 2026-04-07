@@ -106,25 +106,14 @@ function insertActionButtons(video: Element) {
     const actions = document.createElement("span");
     actions.className = "ecx-video-actions";
 
-    const openEl = ActionBadge("\uC5F4\uAE30", "info", () => {
+    const indirectDownloadEl = ActionBadge("\uAC04\uC811\uB2E4\uC6B4", "primary", () => {
         window.open(viewerUrl, "_blank", "noopener,noreferrer");
     });
 
-    const copyEl = ActionBadge("\uBCF5\uC0AC", "secondary", async () => {
-        const ok = await copyText(viewerUrl);
-        copyEl.textContent = ok ? "\uBCF5\uC0AC\uB428" : "\uBCF5\uC0AC \uC2E4\uD328";
-        window.setTimeout(() => {
-            copyEl.textContent = "\uBCF5\uC0AC";
-        }, 1500);
-    });
-
-    const downloadEl = ActionBadge("\uB2E4\uC6B4\uB85C\uB4DC", "primary", () => {
-        window.open(viewerUrl, "_blank", "noopener,noreferrer");
-    });
-
-    const directDownloadEl = ActionBadge("\uC9C1\uC811\uB2E4\uC6B4", "danger", () => {
+    const directDownloadEl = ActionBadge("\uC9C1\uC811\uB2E4\uC6B4", "secondary", () => {
         void queueDirectDownload(directDownloadEl, directUrl.toString(), filename, courseName);
     });
+    directDownloadEl.classList.add("ecx-badge-direct-download");
 
     const statusEl = Badge("", "secondary");
     statusEl.hidden = true;
@@ -133,7 +122,7 @@ function insertActionButtons(video: Element) {
     ensureDirectDownloadStateSync();
     updateDirectDownloadStatusEl(viewerUrl, statusEl);
 
-    actions.append(openEl, copyEl, downloadEl, directDownloadEl, statusEl);
+    actions.append(indirectDownloadEl, directDownloadEl, statusEl);
     display.insertAdjacentElement("afterend", actions);
 }
 
@@ -281,21 +270,4 @@ function formatClock(sec: number): string {
         return `${hour}:${min.toString().padStart(2, "0")}:${rem.toString().padStart(2, "0")}`;
     }
     return `${Math.floor(sec / 60)}:${rem.toString().padStart(2, "0")}`;
-}
-
-async function copyText(text: string) {
-    try {
-        await navigator.clipboard.writeText(text);
-        return true;
-    } catch {
-        const input = document.createElement("input");
-        input.value = text;
-        input.style.position = "fixed";
-        input.style.opacity = "0";
-        document.body.append(input);
-        input.select();
-        const ok = document.execCommand("copy");
-        input.remove();
-        return ok;
-    }
 }

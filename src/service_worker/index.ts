@@ -159,7 +159,7 @@ type CachedPlaylistSnapshot = {
 const DIRECT_DOWNLOAD_MONITOR_PATH = "direct_downloads/index.html";
 const DIRECT_DOWNLOAD_MONITOR_QUERY = `${chrome.runtime.getURL("direct_downloads/")}*`;
 const DIRECT_DOWNLOAD_PLAYLIST_CACHE_KEY = "ecxDirectDownloadPlaylistCache";
-const DIRECT_DOWNLOAD_PLAYLIST_CACHE_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
+const DIRECT_DOWNLOAD_PLAYLIST_CACHE_MAX_AGE = 120 * 24 * 60 * 60 * 1000;
 
 let creatingOffscreenDocument: Promise<void> | null = null;
 let activeCaptureJobId: string | null = null;

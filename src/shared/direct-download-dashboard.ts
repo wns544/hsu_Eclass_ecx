@@ -142,7 +142,31 @@ function createJobCard(job: DirectDownloadJobState, compact: boolean) {
     }
 
     card.append(head, status, progress, meta);
+    if (job.phase === "failed" && job.resumableSessionId && job.playlistUrl) {
+        card.append(createResumeButton(job));
+    }
     return card;
+}
+
+function createResumeButton(job: DirectDownloadJobState) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "ecx-dd-action";
+    button.textContent = "\uC774\uC5B4\uBC1B\uAE30";
+    button.addEventListener("click", async () => {
+        button.disabled = true;
+        button.textContent = "\uC774\uC5B4\uBC1B\uB294 \uC911...";
+        try {
+            await chrome.runtime.sendMessage({
+                type: "RESUME_DIRECT_DOWNLOAD_JOB",
+                jobId: job.id,
+            });
+        } catch {
+            button.disabled = false;
+            button.textContent = "\uC774\uC5B4\uBC1B\uAE30";
+        }
+    });
+    return button;
 }
 
 function buildStatusText(job: DirectDownloadJobState) {

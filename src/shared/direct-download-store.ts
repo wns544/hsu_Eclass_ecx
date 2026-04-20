@@ -51,6 +51,46 @@ export async function getDownloadChunks(sessionId: string) {
     });
 }
 
+export async function getDownloadChunkStats(sessionId: string) {
+    const db = await openDatabase();
+    return new Promise<{ count: number, totalBytes: number }>((resolve, reject) => {
+        const tx = db.transaction(CHUNK_STORE, "readonly");
+        const store = tx.objectStore(CHUNK_STORE);
+        const range = IDBKeyRange.bound([sessionId, 0], [sessionId, Number.MAX_SAFE_INTEGER]);
+        const req = store.openCursor(range);
+        let count = 0;
+        let totalBytes = 0;
+
+        req.onsuccess = () => {
+            const cursor = req.result;
+            if (!cursor) {
+                return;
+            }
+
+            const record = cursor.value as DownloadChunkRecord;
+            count += 1;
+            totalBytes += record.blob.size;
+            cursor.continue();
+        };
+        req.onerror = () => {
+            db.close();
+            reject(req.error ?? new Error("Failed to inspect chunks."));
+        };
+        tx.oncomplete = () => {
+            db.close();
+            resolve({ count, totalBytes });
+        };
+        tx.onerror = () => {
+            db.close();
+            reject(tx.error ?? new Error("Chunk inspection failed."));
+        };
+        tx.onabort = () => {
+            db.close();
+            reject(tx.error ?? new Error("Chunk inspection aborted."));
+        };
+    });
+}
+
 export async function deleteDownloadChunks(sessionId: string) {
     const db = await openDatabase();
     return new Promise<void>((resolve, reject) => {

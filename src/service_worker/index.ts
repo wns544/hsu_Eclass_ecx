@@ -1,6 +1,6 @@
 import "./sidepanel";
 import muxjs from "mux.js";
-import { deleteDownloadChunks, putDownloadChunk } from "#/shared/direct-download-store";
+import { deleteDownloadChunks, getDownloadChunkStats, putDownloadChunk } from "#/shared/direct-download-store";
 import {
     DIRECT_DOWNLOAD_STATE_KEY,
     DirectDownloadJobState,
@@ -45,6 +45,11 @@ type ExportDirectDownloadLogsMessage = {
 
 type ClearDirectDownloadLogsMessage = {
     type: "CLEAR_DIRECT_DOWNLOAD_LOGS";
+};
+
+type ResumeDirectDownloadJobMessage = {
+    type: "RESUME_DIRECT_DOWNLOAD_JOB";
+    jobId: string;
 };
 
 type CaptureDirectDownloadMessage = {
@@ -120,6 +125,7 @@ type DirectDownloadTask = {
     filename: string;
     pageUrl?: string;
     jobId?: string;
+    resumeSessionId?: string;
 };
 
 type DirectDownloadResult = {
@@ -321,6 +327,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true;
     }
 
+    if (message.type === "RESUME_DIRECT_DOWNLOAD_JOB") {
+        void resumeDirectDownloadJob(message as ResumeDirectDownloadJobMessage)
+            .then((result) => sendResponse(result))
+            .catch((error) => {
+                const text = error instanceof Error ? error.message : "Failed to resume direct download.";
+                sendResponse({
+                    ok: false,
+                    error: text,
+                });
+            });
+
+        return true;
+    }
+
     if (message.type === "CAPTURE_DIRECT_DOWNLOAD_STREAM") {
         void handleCapturedDirectDownload(message as CaptureDirectDownloadMessage)
             .then((result) => sendResponse(result))
@@ -375,13 +395,13 @@ async function startDirectDownload(port: chrome.runtime.Port, message: DirectDow
 }
 
 async function executeDirectDownloadTask(task: DirectDownloadTask, onStatus?: (text: string) => void): Promise<DirectDownloadResult> {
-    const { playlistUrl, filename, pageUrl, jobId } = task;
+    const { playlistUrl, filename, pageUrl, jobId, resumeSessionId } = task;
     const fetchContext: FetchContext = { pageUrl };
     const stats: DownloadStats = {
         chunkCount: 0,
         totalBytes: 0,
     };
-    const sessionId = crypto.randomUUID();
+    const sessionId = resumeSessionId || crypto.randomUUID();
     let preparedOffscreenDownload = false;
 
     const report = (patch: Partial<DirectDownloadJobState>) => {
@@ -423,10 +443,30 @@ async function executeDirectDownloadTask(task: DirectDownloadTask, onStatus?: (t
         const transmuxSession = parts.container === "ts"
             ? createTransmuxSession()
             : null;
+        if (jobId && transmuxSession) {
+            await cleanupStoredChunks(sessionId);
+        }
         const totalParts = parts.segments.length + (parts.initSegmentUrl ? 1 : 0);
-        let currentPart = 0;
+        const resumeStats = jobId && !transmuxSession
+            ? await getDownloadChunkStats(sessionId)
+            : { count: 0, totalBytes: 0 };
+        let currentPart = Math.min(resumeStats.count, totalParts);
+        stats.chunkCount = currentPart;
+        stats.totalBytes = resumeStats.totalBytes;
 
-        if (parts.initSegmentUrl) {
+        if (resumeStats.count > 0) {
+            report({
+                phase: "downloading",
+                statusText: `\uC800\uC7A5\uB41C \uC870\uAC01 ${currentPart}\uAC1C\uB97C \uC774\uC5B4\uC11C \uC0AC\uC6A9\uD558\uB294 \uC911...`,
+                progressCurrent: currentPart,
+                progressTotal: totalParts,
+                progressPercent: Math.round((currentPart / totalParts) * 100),
+                downloadedBytes: stats.totalBytes,
+                totalBytes: undefined,
+            });
+        }
+
+        if (parts.initSegmentUrl && currentPart === 0) {
             const buffer = await fetchArrayBuffer(parts.initSegmentUrl, fetchContext);
             await storeChunk(stats, sessionId, new Uint8Array(buffer));
             currentPart += 1;
@@ -440,7 +480,8 @@ async function executeDirectDownloadTask(task: DirectDownloadTask, onStatus?: (t
             });
         }
 
-        for (let i = 0; i < parts.segments.length; i += 1) {
+        const completedSegments = Math.max(currentPart - (parts.initSegmentUrl ? 1 : 0), 0);
+        for (let i = completedSegments; i < parts.segments.length; i += 1) {
             const buffer = await fetchArrayBuffer(parts.segments[i], fetchContext);
             if (transmuxSession) {
                 const chunks = await transmuxTransportStreamSegment(transmuxSession, new Uint8Array(buffer));
@@ -536,11 +577,11 @@ async function executeDirectDownloadTask(task: DirectDownloadTask, onStatus?: (t
     } catch (error) {
         if (preparedOffscreenDownload) {
             await releaseOffscreenDownload(sessionId);
-        } else {
+        } else if (!jobId) {
             await cleanupStoredChunks(sessionId);
         }
         if (jobId) {
-            markJobFailed(jobId, error instanceof Error ? error.message : "\uB2E4\uC6B4\uB85C\uB4DC \uC2E4\uD328");
+            markJobFailed(jobId, error instanceof Error ? error.message : "\uB2E4\uC6B4\uB85C\uB4DC \uC2E4\uD328", sessionId);
         }
         logDirectDownloadEvent(
             "error",
@@ -848,6 +889,14 @@ async function cleanupStoredChunks(sessionId: string) {
     }
 }
 
+async function cleanupJobChunks(job: DirectDownloadJobState) {
+    if (!job.resumableSessionId) {
+        return;
+    }
+
+    await cleanupStoredChunks(job.resumableSessionId);
+}
+
 function trackOffscreenDownload(downloadId: number, sessionId: string, jobId?: string) {
     const timeoutId = setTimeout(() => {
         activeDownloadCleanups.delete(downloadId);
@@ -997,12 +1046,17 @@ async function handleCapturedDirectDownload(message: CaptureDirectDownloadMessag
         updateJobState(message.jobId, {
             phase: "analyzing",
             statusText: "\uC2A4\uD2B8\uB9BC \uCEA1\uCC98 \uC644\uB8CC. \uD50C\uB808\uC77C\uB9AC\uC2A4\uD2B8 \uBD84\uC11D \uC900\uBE44 \uC911...",
+            playlistUrl: message.playlistUrl,
+            pageUrl: message.pageUrl,
+            resumableSessionId: message.jobId,
+            error: undefined,
         });
         void executeDirectDownloadTask({
             playlistUrl: message.playlistUrl,
             filename,
             pageUrl: message.pageUrl,
             jobId: message.jobId,
+            resumeSessionId: message.jobId,
         }).catch((error) => {
             console.error("[ecx] queued direct download failed", error);
         });
@@ -1044,6 +1098,43 @@ async function handleCaptureFailure(message: CaptureDirectDownloadFailedMessage,
     }
 
     await failCaptureJob(message.jobId, message.error, sender.tab?.id, false);
+    return {
+        ok: true,
+    };
+}
+
+async function resumeDirectDownloadJob(message: ResumeDirectDownloadJobMessage) {
+    const job = directDownloadJobs.get(message.jobId);
+    if (!job) {
+        throw new Error("Resume target was not found.");
+    }
+    if (isActiveJob(job)) {
+        return {
+            ok: true,
+            alreadyActive: true,
+        };
+    }
+    if (!job.playlistUrl) {
+        throw new Error("This failed job has no captured stream URL. Please start the download again from the lecture list.");
+    }
+
+    updateJobState(job.id, {
+        phase: "downloading",
+        statusText: "\uC2E4\uD328\uD55C \uC9C1\uC811\uB2E4\uC6B4\uC744 \uC774\uC5B4\uBC1B\uB294 \uC911...",
+        error: undefined,
+        progressPercent: job.progressPercent ?? 0,
+    });
+    logDirectDownloadEvent("info", "Resume requested for failed direct download.", job.id);
+    void executeDirectDownloadTask({
+        playlistUrl: job.playlistUrl,
+        filename: job.title,
+        pageUrl: job.pageUrl,
+        jobId: job.id,
+        resumeSessionId: job.resumableSessionId || job.id,
+    }).catch((error) => {
+        console.error("[ecx] resumed direct download failed", error);
+    });
+
     return {
         ok: true,
     };
@@ -1120,7 +1211,7 @@ function updateJobState(jobId: string, patch: Partial<DirectDownloadJobState>) {
     scheduleStateFlush();
 }
 
-function markJobFailed(jobId: string, reason: string) {
+function markJobFailed(jobId: string, reason: string, resumableSessionId?: string) {
     const current = directDownloadJobs.get(jobId);
     if (!current) {
         return;
@@ -1130,6 +1221,7 @@ function markJobFailed(jobId: string, reason: string) {
         phase: "failed",
         statusText: "\uB2E4\uC6B4\uB85C\uB4DC \uC2E4\uD328",
         error: reason,
+        resumableSessionId: resumableSessionId ?? current.resumableSessionId,
     });
 }
 
@@ -1221,7 +1313,7 @@ async function updateActionBadge(activeCount: number) {
 async function recoverPersistedDirectDownloadState() {
     const stored = await chrome.storage.local.get(DIRECT_DOWNLOAD_STATE_KEY);
     const snapshot = stored[DIRECT_DOWNLOAD_STATE_KEY] as DirectDownloadStateSnapshot | undefined;
-    if (!snapshot?.jobs?.length) {
+        if (!snapshot?.jobs?.length) {
         await updateActionBadge(0);
         return;
     }
@@ -1232,15 +1324,25 @@ async function recoverPersistedDirectDownloadState() {
             continue;
         }
 
-        directDownloadJobs.set(job.id, isActiveJob(job)
-            ? {
+        if (isActiveJob(job) && job.resumableSessionId) {
+            directDownloadJobs.set(job.id, {
                 ...job,
                 phase: "failed",
                 statusText: "\uD655\uC7A5 \uD504\uB85C\uADF8\uB7A8\uC774 \uB2E4\uC2DC \uC2DC\uC791\uB418\uC5B4 \uC791\uC5C5\uC774 \uC911\uB2E8\uB428",
-                error: "\uD655\uC7A5 \uD504\uB85C\uADF8\uB7A8 \uC7AC\uC2DC\uC791",
+                error: "\uD655\uC7A5 \uD504\uB85C\uADF8\uB7A8 \uC7AC\uC2DC\uC791. \uC774\uC5B4\uBC1B\uAE30\uB97C \uB204\uB974\uBA74 \uC800\uC7A5\uB41C \uC870\uAC01\uC744 \uC0AC\uC6A9\uD569\uB2C8\uB2E4.",
                 updatedAt: interruptedAt,
-            }
-            : job);
+            });
+        } else {
+            directDownloadJobs.set(job.id, isActiveJob(job)
+                ? {
+                    ...job,
+                    phase: "failed",
+                    statusText: "\uD655\uC7A5 \uD504\uB85C\uADF8\uB7A8\uC774 \uB2E4\uC2DC \uC2DC\uC791\uB418\uC5B4 \uC791\uC5C5\uC774 \uC911\uB2E8\uB428",
+                    error: "\uD655\uC7A5 \uD504\uB85C\uADF8\uB7A8 \uC7AC\uC2DC\uC791",
+                    updatedAt: interruptedAt,
+                }
+                : job);
+        }
     }
 
     await flushDirectDownloadState();

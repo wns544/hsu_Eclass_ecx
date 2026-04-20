@@ -26,6 +26,9 @@ export type DirectDownloadJobState = {
     downloadedBytes?: number;
     totalBytes?: number;
     finalBytes?: number;
+    playlistUrl?: string;
+    pageUrl?: string;
+    resumableSessionId?: string;
     error?: string;
 };
 

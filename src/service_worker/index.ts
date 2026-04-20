@@ -145,8 +145,21 @@ type CaptureJob = {
     tabId?: number;
 };
 
+type CachedPlaylistEntry = {
+    viewerUrl: string;
+    playlistUrl: string;
+    pageUrl?: string;
+    capturedAt: number;
+};
+
+type CachedPlaylistSnapshot = {
+    entries: Record<string, CachedPlaylistEntry>;
+};
+
 const DIRECT_DOWNLOAD_MONITOR_PATH = "direct_downloads/index.html";
 const DIRECT_DOWNLOAD_MONITOR_QUERY = `${chrome.runtime.getURL("direct_downloads/")}*`;
+const DIRECT_DOWNLOAD_PLAYLIST_CACHE_KEY = "ecxDirectDownloadPlaylistCache";
+const DIRECT_DOWNLOAD_PLAYLIST_CACHE_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
 
 let creatingOffscreenDocument: Promise<void> | null = null;
 let activeCaptureJobId: string | null = null;
@@ -924,6 +937,60 @@ function normalizeTitle(text: string) {
     return normalized || "video";
 }
 
+async function getCachedPlaylist(viewerUrl: string) {
+    const key = normalizeViewerCacheKey(viewerUrl);
+    const snapshot = await getPlaylistCacheSnapshot();
+    const entry = snapshot.entries[key];
+    if (!entry) {
+        return null;
+    }
+
+    if (Date.now() - entry.capturedAt > DIRECT_DOWNLOAD_PLAYLIST_CACHE_MAX_AGE) {
+        await deleteCachedPlaylist(viewerUrl);
+        return null;
+    }
+
+    return entry;
+}
+
+async function setCachedPlaylist(viewerUrl: string, entry: CachedPlaylistEntry) {
+    const snapshot = await getPlaylistCacheSnapshot();
+    snapshot.entries[normalizeViewerCacheKey(viewerUrl)] = entry;
+    await chrome.storage.local.set({
+        [DIRECT_DOWNLOAD_PLAYLIST_CACHE_KEY]: snapshot,
+    });
+}
+
+async function deleteCachedPlaylist(viewerUrl: string) {
+    const snapshot = await getPlaylistCacheSnapshot();
+    delete snapshot.entries[normalizeViewerCacheKey(viewerUrl)];
+    await chrome.storage.local.set({
+        [DIRECT_DOWNLOAD_PLAYLIST_CACHE_KEY]: snapshot,
+    });
+}
+
+async function getPlaylistCacheSnapshot(): Promise<CachedPlaylistSnapshot> {
+    const stored = await chrome.storage.local.get(DIRECT_DOWNLOAD_PLAYLIST_CACHE_KEY);
+    const snapshot = stored[DIRECT_DOWNLOAD_PLAYLIST_CACHE_KEY] as CachedPlaylistSnapshot | undefined;
+    return {
+        entries: snapshot?.entries ?? {},
+    };
+}
+
+function normalizeViewerCacheKey(viewerUrl: string) {
+    try {
+        const url = new URL(viewerUrl);
+        for (const key of [...url.searchParams.keys()]) {
+            if (key.startsWith("ecx")) {
+                url.searchParams.delete(key);
+            }
+        }
+        return `${url.origin}${url.pathname}?${url.searchParams.toString()}`;
+    } catch {
+        return viewerUrl.trim();
+    }
+}
+
 async function startDirectDownloadJob(message: StartDirectDownloadJobMessage, sender: chrome.runtime.MessageSender) {
     const jobId = crypto.randomUUID();
     const title = normalizeTitle(message.filename);
@@ -941,6 +1008,42 @@ async function startDirectDownloadJob(message: StartDirectDownloadJobMessage, se
         updatedAt: now,
     });
 
+    logDirectDownloadEvent("info", "Job queued for direct download.", jobId);
+    refreshQueuePositions();
+    scheduleStateFlush();
+    void ensureDirectDownloadMonitorTab(false, sender.tab?.windowId);
+
+    const cachedPlaylist = await getCachedPlaylist(message.viewerUrl);
+    if (cachedPlaylist) {
+        logDirectDownloadEvent("info", "Using cached playlist URL without opening viewer.", jobId);
+        updateJobState(jobId, {
+            phase: "analyzing",
+            statusText: "\uC800\uC7A5\uB41C \uC2A4\uD2B8\uB9BC \uC8FC\uC18C\uB85C \uB2E4\uC6B4\uB85C\uB4DC \uC900\uBE44 \uC911...",
+            playlistUrl: cachedPlaylist.playlistUrl,
+            pageUrl: cachedPlaylist.pageUrl,
+            resumableSessionId: jobId,
+            queuePosition: undefined,
+        });
+        void executeDirectDownloadTask({
+            playlistUrl: cachedPlaylist.playlistUrl,
+            filename: title,
+            pageUrl: cachedPlaylist.pageUrl,
+            jobId,
+            resumeSessionId: jobId,
+        }).catch((error) => {
+            console.error("[ecx] cached direct download failed", error);
+            void deleteCachedPlaylist(message.viewerUrl);
+        });
+
+        return {
+            ok: true,
+            jobId,
+            queued: false,
+            cached: true,
+            waiting: 0,
+        };
+    }
+
     captureJobs.set(jobId, {
         id: jobId,
         viewerUrl: message.viewerUrl,
@@ -949,10 +1052,6 @@ async function startDirectDownloadJob(message: StartDirectDownloadJobMessage, se
         windowId: sender.tab?.windowId,
     });
     captureJobQueue.push(jobId);
-    logDirectDownloadEvent("info", "Job queued for direct download.", jobId);
-    refreshQueuePositions();
-    scheduleStateFlush();
-    void ensureDirectDownloadMonitorTab(false, sender.tab?.windowId);
     await processCaptureQueue();
 
     return {
@@ -1051,6 +1150,14 @@ async function handleCapturedDirectDownload(message: CaptureDirectDownloadMessag
             resumableSessionId: message.jobId,
             error: undefined,
         });
+        if (job) {
+            await setCachedPlaylist(job.viewerUrl, {
+                viewerUrl: job.viewerUrl,
+                playlistUrl: message.playlistUrl,
+                pageUrl: message.pageUrl,
+                capturedAt: Date.now(),
+            });
+        }
         void executeDirectDownloadTask({
             playlistUrl: message.playlistUrl,
             filename,

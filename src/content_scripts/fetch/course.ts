@@ -36,6 +36,20 @@ export const VideoSelector = "li.activity:is(.vod, .laby):has(.text-ubstrap)";
 export const AssignSelector = "li.activity.assign:has(a)";
 export const QuizSelector = "li.activity.quiz:has(a)";
 
+function buildCourseVideoKey(video: CourseVideo): string {
+    const resourceKey = video.id !== null
+        ? `id:${video.id}`
+        : video.laby !== null
+            ? `laby:${video.laby}`
+            : `title:${video.title}`;
+
+    return [
+        resourceKey,
+        `from:${video.from}`,
+        `due:${video.due}`,
+    ].join("|");
+}
+
 export async function fetchCourseList(): Promise<CourseInfo[]> {
     const doc = await fetchParse("/local/ubion/user/");
     const rows = doc.querySelectorAll("div.course_lists table > tbody > tr");
@@ -87,6 +101,8 @@ export async function fetchCourseCurrent(id: number): Promise<CourseCurrent> {
     const assigns = current.querySelectorAll(AssignSelector);
     const quizzes = current.querySelectorAll(QuizSelector);
 
+    const seenVideoKeys = new Set<string>();
+
     for (const video of videos) {
         const title = video.querySelector("span.instancename")!.firstChild!.textContent!.trim();
         const dateText = video.querySelector("span.text-ubstrap")!.textContent!.trim();
@@ -96,10 +112,17 @@ export async function fetchCourseCurrent(id: number): Promise<CourseCurrent> {
 
         const a = video.querySelector("a");
         if (!a) {
-            res.video.push({
+            const parsedVideo = {
                 title, from, due, duration,
                 id: null, laby: null,
-            });
+            };
+            const videoKey = buildCourseVideoKey(parsedVideo);
+            if (seenVideoKeys.has(videoKey)) {
+                continue;
+            }
+
+            seenVideoKeys.add(videoKey);
+            res.video.push(parsedVideo);
             continue;
         }
 
@@ -108,14 +131,21 @@ export async function fetchCourseCurrent(id: number): Promise<CourseCurrent> {
             ? Number(a.getAttribute("onclick")!.match(/'\/mod\/laby\/viewer\.php\?i=(\d+)'/)![1])
             : null;
 
-        res.video.push({
+        const parsedVideo = {
             title,
             id,
             laby,
             from,
             due,
             duration,
-        });
+        };
+        const videoKey = buildCourseVideoKey(parsedVideo);
+        if (seenVideoKeys.has(videoKey)) {
+            continue;
+        }
+
+        seenVideoKeys.add(videoKey);
+        res.video.push(parsedVideo);
     }
 
     for (const assign of assigns) {

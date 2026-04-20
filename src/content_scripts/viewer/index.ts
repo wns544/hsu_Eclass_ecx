@@ -4,6 +4,11 @@ const autoClose = params.get("ecxAutoClose") === "1";
 const captureJobId = params.get("ecxCaptureJobId");
 const hintedPlaylistUrls: string[] = [];
 const hintedPlaylistUrlSet = new Set<string>();
+const VIEWER_LINK_SELECTOR = [
+    "a[href*='/mod/vod/viewer.php?id=']",
+    "a[href*='/mod/vod/view.php?id=']",
+    "a[href*='/mod/laby/viewer.php?i=']",
+].join(", ");
 
 type DoneMessage = {
     type: "done";
@@ -32,6 +37,7 @@ type PlaylistCaptureResult = {
 };
 
 installPassiveCaptureHooks();
+void installViewerLectureDedupe();
 
 if (params.get("ecxDirectDownload") === "1") {
     void startDirectDownloadFlow();
@@ -483,4 +489,113 @@ function isVisibleElement(el: HTMLElement) {
         && rect.height > 0
         && window.getComputedStyle(el).visibility !== "hidden"
         && window.getComputedStyle(el).display !== "none";
+}
+
+async function installViewerLectureDedupe() {
+    await waitForDocumentBody();
+    dedupeViewerLectureLists();
+
+    const observer = new MutationObserver(() => {
+        dedupeViewerLectureLists();
+    });
+
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+    });
+}
+
+function dedupeViewerLectureLists() {
+    const links = [...document.querySelectorAll<HTMLAnchorElement>(VIEWER_LINK_SELECTOR)];
+    const rows = new Set<HTMLElement>();
+
+    for (const link of links) {
+        const row = findLectureListRow(link);
+        if (row) {
+            rows.add(row);
+        }
+    }
+
+    dedupeLectureRows([...rows]);
+}
+
+function findLectureListRow(link: HTMLAnchorElement) {
+    let current = link.parentElement;
+    let row = current;
+
+    while (current?.parentElement && current.parentElement !== document.body) {
+        const parent = current.parentElement;
+        const viewerLinks = parent.querySelectorAll(VIEWER_LINK_SELECTOR);
+        if (viewerLinks.length >= 2) {
+            return row;
+        }
+
+        row = parent;
+        current = parent;
+    }
+
+    return row;
+}
+
+function dedupeLectureRows(rows: HTMLElement[]) {
+    const seen = new Set<string>();
+
+    for (const row of rows) {
+        const link = row.querySelector<HTMLAnchorElement>(VIEWER_LINK_SELECTOR);
+        if (!link) {
+            continue;
+        }
+
+        const key = buildLectureRowKey(row, link);
+        if (!key) {
+            continue;
+        }
+
+        if (seen.has(key)) {
+            row.style.display = "none";
+            row.dataset.ecxLectureDeduped = "true";
+            continue;
+        }
+
+        seen.add(key);
+        row.style.removeProperty("display");
+        row.dataset.ecxLectureDeduped = "false";
+    }
+}
+
+function buildLectureRowKey(row: HTMLElement, link: HTMLAnchorElement) {
+    const href = normalizeHref(link.href);
+    const title = normalizeText(link.textContent);
+    const duration = normalizeText(row.textContent?.match(/\b\d{1,2}:\d{2}(?::\d{2})?\b/)?.[0]);
+
+    if (title && duration) {
+        return `title:${title}::duration:${duration}`;
+    }
+
+    if (title) {
+        return `title:${title}`;
+    }
+
+    if (!href) {
+        return "";
+    }
+
+    return `href:${href}`;
+}
+
+function normalizeHref(href: string | null | undefined) {
+    if (!href) {
+        return "";
+    }
+
+    try {
+        const url = new URL(href, location.href);
+        return `${url.pathname}?${url.searchParams.toString()}`;
+    } catch {
+        return href.trim();
+    }
+}
+
+function normalizeText(text: string | null | undefined) {
+    return text?.replace(/\s+/g, " ").trim() ?? "";
 }

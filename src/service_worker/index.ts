@@ -156,9 +156,24 @@ const directDownloadJobs = new Map<string, DirectDownloadJobState>();
 const directDownloadLogs: DirectDownloadLogEntry[] = [];
 const downloadSessionLookup = new Map<number, string>();
 const downloadJobLookup = new Map<number, string>();
+const downloadFilenameLookup = new Map<string, string>();
 
 void recoverPersistedDirectDownloadState();
 void recoverPersistedDirectDownloadLogs();
+
+chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
+    const filename = downloadFilenameLookup.get(downloadItem.url);
+    if (!filename) {
+        suggest();
+        return;
+    }
+
+    downloadFilenameLookup.delete(downloadItem.url);
+    suggest({
+        filename,
+        conflictAction: "uniquify",
+    });
+});
 
 chrome.downloads.onChanged.addListener((delta) => {
     const state = delta.state?.current;
@@ -490,10 +505,14 @@ async function executeDirectDownloadTask(task: DirectDownloadTask, onStatus?: (t
             finalBytes: downloadResult.size ?? stats.totalBytes,
         });
 
+        const downloadFilename = `${sanitizeFilename(filename)}.${finalContainer}`;
+        downloadFilenameLookup.set(downloadResult.objectUrl, downloadFilename);
+
         const downloadId = await chrome.downloads.download({
             url: downloadResult.objectUrl,
-            filename: `${sanitizeFilename(filename)}.${finalContainer}`,
+            filename: downloadFilename,
             saveAs: false,
+            conflictAction: "uniquify",
         });
         if (downloadId === undefined) {
             throw new Error("Download API did not return a download id.");

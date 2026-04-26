@@ -175,23 +175,19 @@ const directDownloadJobs = new Map<string, DirectDownloadJobState>();
 const directDownloadLogs: DirectDownloadLogEntry[] = [];
 const downloadSessionLookup = new Map<number, string>();
 const downloadJobLookup = new Map<number, string>();
-const downloadFilenameLookup = new Map<string, string>();
+const pendingDownloadLookup = new Map<string, { sessionId: string, jobId?: string }>();
 
 void recoverPersistedDirectDownloadState();
 void recoverPersistedDirectDownloadLogs();
 
-chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
-    const filename = downloadFilenameLookup.get(downloadItem.url);
-    if (!filename) {
-        suggest();
+chrome.downloads.onCreated.addListener((downloadItem) => {
+    const pending = pendingDownloadLookup.get(downloadItem.url);
+    if (!pending) {
         return;
     }
 
-    downloadFilenameLookup.delete(downloadItem.url);
-    suggest({
-        filename,
-        conflictAction: "uniquify",
-    });
+    pendingDownloadLookup.delete(downloadItem.url);
+    trackOffscreenDownload(downloadItem.id, pending.sessionId, pending.jobId);
 });
 
 chrome.downloads.onChanged.addListener((delta) => {
@@ -545,6 +541,7 @@ async function executeDirectDownloadTask(task: DirectDownloadTask, onStatus?: (t
         const downloadResult = await prepareOffscreenDownload({
             sessionId,
             mimeType: finalMimeType,
+            filename: `${sanitizeFilename(filename)}.${finalContainer}`,
         });
         preparedOffscreenDownload = true;
         if (!downloadResult.ok || !downloadResult.objectUrl) {
@@ -559,21 +556,11 @@ async function executeDirectDownloadTask(task: DirectDownloadTask, onStatus?: (t
             finalBytes: downloadResult.size ?? stats.totalBytes,
         });
 
-        const downloadFilename = `${sanitizeFilename(filename)}.${finalContainer}`;
-        downloadFilenameLookup.set(downloadResult.objectUrl, downloadFilename);
-
-        const downloadId = await chrome.downloads.download({
-            url: downloadResult.objectUrl,
-            filename: downloadFilename,
-            saveAs: false,
-            conflictAction: "uniquify",
+        pendingDownloadLookup.set(downloadResult.objectUrl, {
+            sessionId,
+            jobId,
         });
-        if (downloadId === undefined) {
-            throw new Error("Download API did not return a download id.");
-        }
-
-        trackOffscreenDownload(downloadId, sessionId, jobId);
-        logDirectDownloadEvent("info", `Chrome download started. downloadId=${downloadId}`, jobId);
+        logDirectDownloadEvent("info", "Browser download started from offscreen document.", jobId);
         report({
             phase: "saving",
             statusText: "\uD06C\uB86C \uC800\uC7A5 \uCC98\uB9AC \uC911...",
@@ -870,10 +857,11 @@ async function ensureOffscreenDocument() {
 async function prepareOffscreenDownload(message: {
     sessionId: string;
     mimeType: string;
+    filename: string;
 }) {
     await ensureOffscreenDocument();
     return chrome.runtime.sendMessage({
-        type: "ECX_OFFSCREEN_PREPARE_DOWNLOAD",
+        type: "ECX_OFFSCREEN_START_DOWNLOAD",
         ...message,
     }) as Promise<OffscreenDownloadResult>;
 }

@@ -10,6 +10,7 @@ import {
     createEmptyDirectDownloadLogSnapshot,
 } from "#/shared/direct-download-log";
 import { renderDirectDownloadLogSection } from "#/shared/direct-download-log-panel";
+import { createRepairSection } from "./repair";
 
 void initMonitorPage();
 
@@ -88,7 +89,7 @@ async function initMonitorPage() {
     const logs = document.createElement("section");
     logs.className = "ecx-monitor-logs";
 
-    shell.append(header, content, logs);
+    shell.append(header, createRepairSection(), content, logs);
     app.append(shell);
 
     const renderState = (snapshot: DirectDownloadStateSnapshot) => {

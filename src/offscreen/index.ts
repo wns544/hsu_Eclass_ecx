@@ -1,4 +1,5 @@
 import { deleteDownloadChunks, getDownloadChunks } from "#/shared/direct-download-store";
+import { normalizeToMp4 } from "#/shared/mp4-normalize";
 
 type OffscreenPrepareDownloadMessage = {
     type: "ECX_OFFSCREEN_START_DOWNLOAD";
@@ -50,12 +51,13 @@ async function handleStartDownload(message: OffscreenPrepareDownloadMessage) {
         throw new Error("No stored chunks were found.");
     }
 
-    const file = new File(chunks, message.filename, {
+    const collected = new File(chunks, message.filename, {
         type: message.mimeType || "application/octet-stream",
     });
-    if (file.size === 0) {
+    if (collected.size === 0) {
         throw new Error("Stored chunks produced an empty file.");
     }
+    const file = (await normalizeToMp4(collected, message.filename)).file;
 
     const previousUrl = activeDownloads.get(message.sessionId);
     if (previousUrl) {

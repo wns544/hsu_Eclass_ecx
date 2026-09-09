@@ -100,7 +100,7 @@ function insertActionButtons(video: Element) {
     const viewerUrl = link.href.replace("/view.php?", "/viewer.php?");
     const directUrl = new URL(viewerUrl);
     directUrl.searchParams.set("ecxDirectDownload", "1");
-    const filename = inst.querySelector("span.instancename")?.textContent?.trim() || "video";
+    const filename = inst.querySelector("span.instancename")?.firstChild?.textContent?.trim() || "video";
     const courseName = readCourseName();
 
     const actions = document.createElement("span");

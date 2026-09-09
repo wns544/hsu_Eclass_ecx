@@ -920,7 +920,7 @@ function sanitizeFilename(text: string) {
 
 function normalizeTitle(text: string) {
     const normalized = text
-        .replace(/(?:\s|[_\-\u2013\u2014()[\]])*\uB3D9\uC601\uC0C1\uCD9C\uC11D\s*$/u, "")
+        .replace(/(?:\s|[_\-\u2013\u2014()[\]])*\uB3D9\uC601\uC0C1\s*(?:\uCD9C\uC11D|\uBBF8\uC2DC\uCCAD|\uC2DC\uCCAD)(?:\s*(?:[\u00B7.]?\s*)?\d+\s*\uC77C\s*\uD6C4)?\s*$/u, "")
         .trim();
     return normalized || "video";
 }

@@ -32,6 +32,7 @@
         "ws": "^8.18.1"
     },
     "dependencies": {
+        "mediabunny": "1.56.0",
         "mux.js": "^6.3.0"
     }
 }

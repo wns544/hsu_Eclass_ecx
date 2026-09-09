@@ -1,7 +1,7 @@
 {
     "$schema": "https://json.schemastore.org/chrome-manifest",
     "manifest_version": 3,
-    "name": "hsu-ecx (dev)",
+    "name": "hsu-ecx 0.2.1_Customed (dev)",
     "version": "0.2.1",
     "version_name": "0.2.1 dev",
     "icons": {

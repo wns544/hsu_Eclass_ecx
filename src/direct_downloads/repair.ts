@@ -159,6 +159,7 @@ export function createRepairSection() {
     section.append(head, notice, status, summary, list, logSection);
     let jobs: Job[] = [];
     let stopRequested = false;
+    let processing = false;
 
     const renderHistory = async () => {
         const stored = await chrome.storage.local.get(REPAIR_LOG_KEY);
@@ -230,17 +231,26 @@ export function createRepairSection() {
             if (permissions.some(permission => permission !== "granted")) {
                 throw new Error("하나 이상의 파일에 대한 쓰기 권한이 허용되지 않았습니다.");
             }
-            jobs = handles.map(createJob);
-            list.replaceChildren(...jobs.map(job => job.card));
-            jobs.forEach(updateJob);
+            const addedJobs = handles.map((handle, index) => createJob(handle, jobs.length + index));
+            jobs.push(...addedJobs);
+            list.append(...addedJobs.map(job => job.card));
+            addedJobs.forEach(updateJob);
             summary.hidden = false;
+            refreshSummary();
+            if (processing) {
+                status.textContent = `${handles.length}개 영상이 처리 대기열에 추가되었습니다.`;
+                return;
+            }
+            processing = true;
+            button.textContent = "+ 영상 추가";
             stopRequested = false;
             stop.disabled = false;
             stop.hidden = false;
             stop.textContent = "이 파일까지만 처리";
-            refreshSummary();
             clock = setInterval(() => jobs.filter(job => steps.includes(job.phase)).forEach(updateJob), 1000);
-            for (const job of jobs) {
+            let cursor = 0;
+            while (cursor < jobs.length) {
+                const job = jobs[cursor++];
                 if (stopRequested) { setPhase(job, "skipped"); continue; }
                 job.started = Date.now();
                 setPhase(job, "analyzing");
@@ -267,14 +277,17 @@ export function createRepairSection() {
             }
             const count = (phase: Phase) => jobs.filter(job => job.phase === phase).length;
             status.textContent = `처리 종료 · 완료 ${count("completed")}개 · 실패 ${count("failed")}개${count("skipped") ? ` · 건너뜀 ${count("skipped")}개` : ""}`;
+            processing = false;
+            button.textContent = "+ 영상 선택 후 복구";
         } catch (error) {
             status.textContent = error instanceof DOMException && error.name === "AbortError"
                 ? "파일 선택을 취소했습니다."
                 : `파일을 선택하지 못했습니다: ${error instanceof Error ? error.message : "알 수 없는 오류"}`;
         } finally {
-            if (clock !== undefined) clearInterval(clock);
+            if (!processing && clock !== undefined) clearInterval(clock);
             button.disabled = false;
-            stop.hidden = true;
+            if (!processing) button.textContent = "+ 영상 선택 후 복구";
+            if (!processing) stop.hidden = true;
         }
     });
     return section;

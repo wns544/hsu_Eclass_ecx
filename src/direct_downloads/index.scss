@@ -16,7 +16,7 @@ body {
 }
 
 #app {
-    max-width: 1080px;
+    max-width: 1480px;
     margin: 0 auto;
     padding: 32px 20px 48px;
     box-sizing: border-box;
@@ -70,6 +70,87 @@ body {
     gap: 20px;
 }
 
+.ecx-monitor-workspace {
+    display: grid;
+    grid-template-columns: 210px minmax(0, 1fr);
+    gap: 18px;
+    align-items: start;
+}
+
+.ecx-monitor-sidebar {
+    position: sticky;
+    top: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+    border: 1px solid rgba(23, 37, 84, 0.08);
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.72);
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.05);
+}
+
+.ecx-monitor-workspace-tab,
+.ecx-monitor-split {
+    width: 100%;
+    border: 0;
+    border-radius: 12px;
+    background: transparent;
+    color: #52657d;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.ecx-monitor-workspace-tab {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    padding: 13px 12px;
+}
+
+.ecx-monitor-workspace-tab strong { font-size: 14px; }
+.ecx-monitor-workspace-tab span { font-size: 11px; line-height: 1.45; }
+.ecx-monitor-workspace-tab[aria-current="page"] { background: #eaf3ff; color: #145aaf; box-shadow: inset 3px 0 #2d7de0; }
+.ecx-monitor-workspace-tab:focus-visible,
+.ecx-monitor-split:focus-visible { outline: 3px solid #68aafc; outline-offset: 2px; }
+
+.ecx-monitor-split {
+    margin-top: 6px;
+    padding: 10px 12px;
+    border: 1px solid rgba(23, 37, 84, 0.1);
+    background: #fff;
+    color: #274765;
+    font-size: 12px;
+    font-weight: 700;
+    text-align: center;
+}
+
+.ecx-monitor-split:disabled { cursor: not-allowed; opacity: .48; }
+
+.ecx-monitor-panes { min-width: 0; }
+.ecx-monitor-pane { min-width: 0; }
+.ecx-monitor-download-pane { display: flex; flex-direction: column; gap: 20px; }
+.ecx-monitor-workspace[data-view="single"] .ecx-monitor-pane:not(:first-child) { display: none; }
+
+@media (min-width: 1180px) {
+    .ecx-monitor-workspace[data-view="split"] .ecx-monitor-panes {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 18px;
+        align-items: start;
+    }
+
+    .ecx-monitor-workspace[data-view="split"] .ecx-monitor-pane {
+        padding: 18px;
+        border: 1px solid rgba(23, 37, 84, 0.08);
+        border-radius: 22px;
+        background: rgba(255, 255, 255, 0.5);
+    }
+
+    .ecx-monitor-workspace[data-view="split"] .ecx-monitor-repair-pane .ecx-repair { padding: 18px; }
+}
+
 .ecx-monitor-logs {
     display: flex;
     flex-direction: column;
@@ -118,4 +199,25 @@ body {
     .ecx-monitor-actions {
         justify-content: flex-start;
     }
+
+    .ecx-monitor-workspace {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+
+    .ecx-monitor-sidebar {
+        position: static;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px;
+        padding: 7px;
+    }
+
+    .ecx-monitor-workspace-tab { padding: 10px; }
+    .ecx-monitor-workspace-tab span { display: none; }
+    .ecx-monitor-split { display: none; }
+}
+
+@media (min-width: 721px) and (max-width: 1179px) {
+    .ecx-monitor-workspace { grid-template-columns: 174px minmax(0, 1fr); }
 }

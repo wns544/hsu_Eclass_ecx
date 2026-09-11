@@ -35,11 +35,11 @@ async function initMonitorPage() {
 
     const title = document.createElement("h1");
     title.className = "ecx-monitor-title";
-    title.textContent = "\uC9C1\uC811\uB2E4\uC6B4 \uC9C4\uD589\uD604\uD669";
+    title.textContent = "\uC601\uC0C1 \uC791\uC5C5\uC2E4";
 
     const subtitle = document.createElement("p");
     subtitle.className = "ecx-monitor-subtitle";
-    subtitle.textContent = "\uC0C8 \uC9C1\uC811\uB2E4\uC6B4 \uC791\uC5C5\uC740 \uC774 \uD0ED\uC5D0 \uACC4\uC18D \uCD94\uAC00\uB418\uACE0, \uC774\uBBF8 \uC5F4\uB9B0 \uD0ED\uC740 \uADF8\uB300\uB85C \uC7AC\uC0AC\uC6A9\uB429\uB2C8\uB2E4.";
+    subtitle.textContent = "\uC601\uC0C1 \uB2E4\uC6B4\uB85C\uB4DC\uC640 \uC7AC\uC0DD \uBB38\uC81C \uBCF5\uAD6C\uB97C \uD55C \uACF3\uC5D0\uC11C \uAD00\uB9AC\uD569\uB2C8\uB2E4.";
 
     const actions = document.createElement("div");
     actions.className = "ecx-monitor-actions";
@@ -89,7 +89,67 @@ async function initMonitorPage() {
     const logs = document.createElement("section");
     logs.className = "ecx-monitor-logs";
 
-    shell.append(header, createRepairSection(), content, logs);
+    const workspace = document.createElement("section");
+    workspace.className = "ecx-monitor-workspace";
+    workspace.setAttribute("aria-label", "작업 공간");
+
+    const sidebar = document.createElement("nav");
+    sidebar.className = "ecx-monitor-sidebar";
+    sidebar.setAttribute("aria-label", "작업 종류");
+    const downloadTab = createWorkspaceTab("download", "영상 다운로드", "다운로드 진행 상황과 기록");
+    const repairTab = createWorkspaceTab("repair", "영상 변환", "재생 위치 이동이 안 되는 영상을 복구");
+    const splitButton = document.createElement("button");
+    splitButton.type = "button";
+    splitButton.className = "ecx-monitor-split";
+    sidebar.append(downloadTab, repairTab, splitButton);
+
+    const panes = document.createElement("div");
+    panes.className = "ecx-monitor-panes";
+    const downloadPane = document.createElement("section");
+    downloadPane.className = "ecx-monitor-pane ecx-monitor-download-pane";
+    downloadPane.dataset.panel = "download";
+    downloadPane.setAttribute("aria-label", "영상 다운로드");
+    downloadPane.append(content, logs);
+    const repairPane = document.createElement("section");
+    repairPane.className = "ecx-monitor-pane ecx-monitor-repair-pane";
+    repairPane.dataset.panel = "repair";
+    repairPane.setAttribute("aria-label", "영상 변환");
+    repairPane.append(createRepairSection());
+    workspace.append(sidebar, panes);
+
+    type WorkspacePanel = "download" | "repair";
+    const wideWorkspace = window.matchMedia("(min-width: 1180px)");
+    let selectedPanel: WorkspacePanel = localStorage.getItem("ecx-monitor-selected-panel") === "repair" ? "repair" : "download";
+    let splitPreferred = localStorage.getItem("ecx-monitor-split-view") === "true";
+    const applyWorkspaceLayout = () => {
+        const split = splitPreferred && wideWorkspace.matches;
+        const activePane = selectedPanel === "download" ? downloadPane : repairPane;
+        const otherPane = selectedPanel === "download" ? repairPane : downloadPane;
+        panes.replaceChildren(activePane, otherPane);
+        workspace.dataset.view = split ? "split" : "single";
+        workspace.dataset.selected = selectedPanel;
+        downloadTab.setAttribute("aria-current", selectedPanel === "download" ? "page" : "false");
+        repairTab.setAttribute("aria-current", selectedPanel === "repair" ? "page" : "false");
+        splitButton.disabled = !wideWorkspace.matches;
+        splitButton.textContent = split ? "한 화면 보기" : "동시 보기";
+        splitButton.title = wideWorkspace.matches ? "넓은 화면에서 두 작업을 나란히 봅니다." : "브라우저 너비가 1180px 이상일 때 사용할 수 있습니다.";
+    };
+    const selectPanel = (panel: WorkspacePanel) => {
+        selectedPanel = panel;
+        localStorage.setItem("ecx-monitor-selected-panel", panel);
+        applyWorkspaceLayout();
+    };
+    downloadTab.addEventListener("click", () => selectPanel("download"));
+    repairTab.addEventListener("click", () => selectPanel("repair"));
+    splitButton.addEventListener("click", () => {
+        splitPreferred = !splitPreferred;
+        localStorage.setItem("ecx-monitor-split-view", String(splitPreferred));
+        applyWorkspaceLayout();
+    });
+    wideWorkspace.addEventListener("change", applyWorkspaceLayout);
+    applyWorkspaceLayout();
+
+    shell.append(header, workspace);
     app.append(shell);
 
     const renderState = (snapshot: DirectDownloadStateSnapshot) => {
@@ -126,6 +186,19 @@ async function initMonitorPage() {
                 ?? createEmptyDirectDownloadLogSnapshot());
         }
     });
+}
+
+function createWorkspaceTab(id: "download" | "repair", title: string, description: string) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "ecx-monitor-workspace-tab";
+    button.dataset.panel = id;
+    const name = document.createElement("strong");
+    name.textContent = title;
+    const detail = document.createElement("span");
+    detail.textContent = description;
+    button.append(name, detail);
+    return button;
 }
 
 async function loadStateSnapshot() {

@@ -52,6 +52,12 @@ type ResumeDirectDownloadJobMessage = {
     jobId: string;
 };
 
+type RegisterDownloadFilenameMessage = {
+    type: "REGISTER_DOWNLOAD_FILENAME";
+    sourceUrl: string;
+    filenameBase: string;
+};
+
 type CaptureDirectDownloadMessage = {
     type: "CAPTURE_DIRECT_DOWNLOAD_STREAM";
     jobId?: string;
@@ -176,6 +182,23 @@ const directDownloadLogs: DirectDownloadLogEntry[] = [];
 const downloadSessionLookup = new Map<number, string>();
 const downloadJobLookup = new Map<number, string>();
 const pendingDownloadLookup = new Map<string, { sessionId: string, jobId?: string }>();
+const pendingFilenameSuggestions = new Map<string, { filenameBase: string, expiresAt: number }>();
+
+chrome.downloads.onDeterminingFilename.addListener((downloadItem, suggest) => {
+    const key = normalizeDownloadUrl(downloadItem.url);
+    const pending = pendingFilenameSuggestions.get(key);
+    if (!pending || pending.expiresAt < Date.now()) {
+        if (pending) pendingFilenameSuggestions.delete(key);
+        suggest();
+        return;
+    }
+
+    pendingFilenameSuggestions.delete(key);
+    suggest({
+        filename: buildSuggestedDownloadFilename(pending.filenameBase, downloadItem),
+        conflictAction: "uniquify",
+    });
+});
 
 void recoverPersistedDirectDownloadState();
 void recoverPersistedDirectDownloadLogs();
@@ -348,6 +371,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             });
 
         return true;
+    }
+
+    if (message.type === "REGISTER_DOWNLOAD_FILENAME") {
+        const request = message as RegisterDownloadFilenameMessage;
+        const filenameBase = sanitizeFilename(request.filenameBase);
+        if (!request.sourceUrl || !filenameBase) {
+            sendResponse({ ok: false, error: "파일 이름 정보를 찾지 못했습니다." });
+            return;
+        }
+
+        pendingFilenameSuggestions.set(normalizeDownloadUrl(request.sourceUrl), {
+            filenameBase,
+            expiresAt: Date.now() + 60_000,
+        });
+        sendResponse({ ok: true });
+        return;
     }
 
     if (message.type === "CAPTURE_DIRECT_DOWNLOAD_STREAM") {
@@ -916,6 +955,41 @@ function trackOffscreenDownload(downloadId: number, sessionId: string, jobId?: s
 function sanitizeFilename(text: string) {
     const normalized = normalizeTitle(text);
     return normalized.replace(/[\\/:*?\"<>|]/g, "_").slice(0, 120) || "video";
+}
+
+function normalizeDownloadUrl(value: string) {
+    try {
+        const url = new URL(value);
+        url.hash = "";
+        return url.toString();
+    } catch {
+        return value.split("#", 1)[0];
+    }
+}
+
+function buildSuggestedDownloadFilename(filenameBase: string, downloadItem: chrome.downloads.DownloadItem) {
+    const originalName = downloadItem.filename.split(/[\\/]/).pop() || "";
+    const extensionMatch = originalName.match(/(\.[A-Za-z0-9]{1,12})$/);
+    const extension = extensionMatch?.[1] || extensionFromMimeType(downloadItem.mime);
+    const base = extension && filenameBase.toLowerCase().endsWith(extension.toLowerCase())
+        ? filenameBase.slice(0, -extension.length)
+        : filenameBase;
+    return `${base}${extension}`;
+}
+
+function extensionFromMimeType(mimeType: string) {
+    const extensions: Record<string, string> = {
+        "application/pdf": ".pdf",
+        "application/zip": ".zip",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation": ".pptx",
+        "application/msword": ".doc",
+        "application/vnd.ms-excel": ".xls",
+        "application/vnd.ms-powerpoint": ".ppt",
+        "text/plain": ".txt",
+    };
+    return extensions[mimeType.toLowerCase()] || "";
 }
 
 function normalizeTitle(text: string) {

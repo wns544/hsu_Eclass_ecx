@@ -29,7 +29,7 @@ onLoad(async () => {
         }
 
         const videos = section.querySelectorAll(VideoSelector);
-        videos.forEach((video, i) => videoExt(video, videoInfos[i]));
+        videos.forEach((video, i) => videoExt(video, videoInfos[i], week));
     }
 
     const assigns = document.querySelectorAll(AssignSelector + SummaryExcl);
@@ -37,7 +37,46 @@ onLoad(async () => {
 
     const quizzes = document.querySelectorAll(QuizSelector + SummaryExcl);
     quizzes.forEach(quizExt);
+
+    installResourceFilenameHook();
 });
+
+function installResourceFilenameHook() {
+    document.addEventListener("click", (event) => {
+        if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+            return;
+        }
+
+        const target = event.target;
+        if (!(target instanceof Element)) {
+            return;
+        }
+
+        const link = target.closest<HTMLAnchorElement>("a[href]");
+        const activity = link?.closest("li.activity.resource");
+        const title = activity?.querySelector("span.instancename")?.firstChild?.textContent?.trim();
+        const week = getActivityWeek(activity);
+        if (!link || !activity || !title || !week) {
+            return;
+        }
+
+        event.preventDefault();
+        const filenameBase = `${String(week).padStart(2, "0")}주차_${title}`;
+        void chrome.runtime.sendMessage({
+            type: "REGISTER_DOWNLOAD_FILENAME",
+            sourceUrl: link.href,
+            filenameBase,
+        }).finally(() => {
+            window.location.assign(link.href);
+        });
+    }, true);
+}
+
+function getActivityWeek(activity: Element | null | undefined) {
+    const section = activity?.closest<HTMLElement>("li.section[id^='section-']");
+    const value = Number(section?.id.replace("section-", ""));
+    return Number.isFinite(value) && value > 0 ? value : 0;
+}
 
 export function insertBelow(act: Element, el: Element) {
     const inst = act.querySelector("div.activityinstance")!;

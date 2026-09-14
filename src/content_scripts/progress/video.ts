@@ -31,7 +31,7 @@ const directDownloadStatusEls = new Map<string, HTMLSpanElement>();
 let directDownloadSnapshot = createEmptyDirectDownloadSnapshot();
 let directDownloadStateInitialized = false;
 
-export default function videoExt(video: Element, { title, actual, required }: VideoInfo) {
+export default function videoExt(video: Element, { title, actual, required }: VideoInfo, week: number) {
     const name = video.querySelector("span.instancename")!.firstChild!.textContent!.trim();
     if (name !== title) {
         return;
@@ -52,7 +52,7 @@ export default function videoExt(video: Element, { title, actual, required }: Vi
     })();
 
     const duration = readDuration(video);
-    insertActionButtons(video);
+    insertActionButtons(video, week);
 
     const el = Horizontal();
     insertBelow(video, el);
@@ -89,7 +89,7 @@ export default function videoExt(video: Element, { title, actual, required }: Vi
     ].filter(e => e !== null));
 }
 
-function insertActionButtons(video: Element) {
+function insertActionButtons(video: Element, week: number) {
     const inst = video.querySelector("div.activityinstance");
     const display = video.querySelector("span.displayoptions");
     const link = video.querySelector<HTMLAnchorElement>("a[href*=\"/mod/vod/view.php?id=\"]");
@@ -100,7 +100,8 @@ function insertActionButtons(video: Element) {
     const viewerUrl = link.href.replace("/view.php?", "/viewer.php?");
     const directUrl = new URL(viewerUrl);
     directUrl.searchParams.set("ecxDirectDownload", "1");
-    const filename = inst.querySelector("span.instancename")?.firstChild?.textContent?.trim() || "video";
+    const title = inst.querySelector("span.instancename")?.firstChild?.textContent?.trim() || "video";
+    const filename = makeWeeklyFilename(week, title);
     const courseName = readCourseName();
 
     const actions = document.createElement("span");
@@ -124,6 +125,11 @@ function insertActionButtons(video: Element) {
 
     actions.append(indirectDownloadEl, directDownloadEl, statusEl);
     display.insertAdjacentElement("afterend", actions);
+}
+
+function makeWeeklyFilename(week: number, title: string) {
+    const prefix = Number.isFinite(week) && week > 0 ? `${String(week).padStart(2, "0")}주차_` : "";
+    return `${prefix}${title}`;
 }
 
 async function queueDirectDownload(button: HTMLButtonElement, viewerUrl: string, filename: string, courseName: string) {

@@ -107,10 +107,6 @@ function insertActionButtons(video: Element, week: number) {
     const actions = document.createElement("span");
     actions.className = "ecx-video-actions";
 
-    const indirectDownloadEl = ActionBadge("\uAC04\uC811\uB2E4\uC6B4", "primary", () => {
-        window.open(viewerUrl, "_blank", "noopener,noreferrer");
-    });
-
     const directDownloadEl = ActionBadge("\uC9C1\uC811\uB2E4\uC6B4", "secondary", () => {
         void queueDirectDownload(directDownloadEl, directUrl.toString(), filename, courseName);
     });
@@ -123,7 +119,7 @@ function insertActionButtons(video: Element, week: number) {
     ensureDirectDownloadStateSync();
     updateDirectDownloadStatusEl(viewerUrl, statusEl);
 
-    actions.append(indirectDownloadEl, directDownloadEl, statusEl);
+    actions.append(directDownloadEl, statusEl);
     display.insertAdjacentElement("afterend", actions);
 }
 

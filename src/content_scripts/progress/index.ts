@@ -7,6 +7,7 @@ import { SwitchSelector, VideoSelector, AssignSelector, QuizSelector } from "#cs
 import videoExt from "./video";
 import assignExt from "./assign";
 import quizExt from "./quiz";
+import { ActionBadge } from "#cs/comps/badge";
 
 const SummaryExcl = ":not(.course_box0 .activity)";
 
@@ -60,15 +61,12 @@ function installResourceFilenameHook() {
             continue;
         }
 
+        if (activity.querySelector(".ecx-resource-direct-download")) {
+            continue;
+        }
+
         const filenameBase = `${String(week).padStart(2, "0")}주차_${title}`;
-        const trigger = document.createElement("button");
-        trigger.type = "button";
-        trigger.className = "ecx-resource-download-trigger";
-        trigger.title = `${filenameBase} 이름으로 다운로드`;
-        trigger.setAttribute("aria-label", `${title} 다운로드`);
-        trigger.append(...Array.from(link.childNodes));
-        link.replaceWith(trigger);
-        trigger.addEventListener("click", () => {
+        const directButton = ActionBadge("직접다운", "secondary", () => {
             showFilenameNotice(`${filenameBase} · 파일명 적용 후 다운로드 중`);
             void chrome.runtime.sendMessage({
                 type: "DOWNLOAD_COURSE_RESOURCE",
@@ -84,6 +82,9 @@ function installResourceFilenameHook() {
                 showFilenameNotice(`파일명 적용 실패: ${error instanceof Error ? error.message : "알 수 없는 오류"}`, true);
             });
         });
+        directButton.classList.add("ecx-resource-direct-download", "ecx-badge-direct-download");
+        directButton.title = `${filenameBase} 이름으로 다운로드`;
+        link.insertAdjacentElement("afterend", directButton);
     }
 }
 

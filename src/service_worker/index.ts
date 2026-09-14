@@ -981,6 +981,7 @@ async function downloadCourseResource(message: DownloadCourseResourceMessage) {
 
     const pending = { filenameBase, expiresAt: Date.now() + 60_000 };
     pendingFilenameSuggestions.set(normalizeDownloadUrl(message.sourceUrl), pending);
+    let extension = "";
     try {
         const response = await fetch(message.sourceUrl, {
             method: "HEAD",
@@ -990,12 +991,16 @@ async function downloadCourseResource(message: DownloadCourseResourceMessage) {
         if (response.url) {
             pendingFilenameSuggestions.set(normalizeDownloadUrl(response.url), pending);
         }
+        extension = extensionFromContentDisposition(response.headers.get("content-disposition"))
+            || extensionFromUrl(response.url)
+            || extensionFromMimeType(response.headers.get("content-type") || "");
     } catch {
         // The browser download below can still use the original URL and logged-in cookies.
     }
 
     const downloadId = await chrome.downloads.download({
         url: message.sourceUrl,
+        filename: extension ? `${filenameBase}${extension}` : undefined,
         conflictAction: "uniquify",
         saveAs: false,
     });
@@ -1035,6 +1040,26 @@ function extensionFromMimeType(mimeType: string) {
         "text/plain": ".txt",
     };
     return extensions[mimeType.toLowerCase()] || "";
+}
+
+function extensionFromContentDisposition(value: string | null) {
+    if (!value) return "";
+    const encoded = value.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+    const plain = value.match(/filename\s*=\s*"?([^";]+)"?/i)?.[1];
+    const filename = encoded ? decodeURIComponent(encoded) : plain || "";
+    return extensionFromFilename(filename);
+}
+
+function extensionFromUrl(value: string) {
+    try {
+        return extensionFromFilename(new URL(value).pathname);
+    } catch {
+        return extensionFromFilename(value);
+    }
+}
+
+function extensionFromFilename(value: string) {
+    return value.match(/(\.[A-Za-z0-9]{1,12})$/)?.[1] || "";
 }
 
 function normalizeTitle(text: string) {

@@ -15,6 +15,8 @@ onLoad(async () => {
         return;
     }
 
+    installResourceFilenameHook();
+
     const params = new URLSearchParams(location.search);
     const id = Number(params.get("id"));
 
@@ -38,7 +40,6 @@ onLoad(async () => {
     const quizzes = document.querySelectorAll(QuizSelector + SummaryExcl);
     quizzes.forEach(quizExt);
 
-    installResourceFilenameHook();
 });
 
 function installResourceFilenameHook() {
@@ -53,10 +54,13 @@ function installResourceFilenameHook() {
         }
 
         const link = target.closest<HTMLAnchorElement>("a[href]");
-        const activity = link?.closest("li.activity.resource");
+        const activity = link?.closest("li.activity");
         const title = activity?.querySelector("span.instancename")?.firstChild?.textContent?.trim();
         const week = getActivityWeek(activity);
-        if (!link || !activity || !title || !week) {
+        const isResourceLink = link?.pathname.includes("/mod/resource/")
+            || link?.pathname.includes("/pluginfile.php/")
+            || activity?.classList.contains("resource");
+        if (!link || !activity || !title || !week || !isResourceLink) {
             return;
         }
 

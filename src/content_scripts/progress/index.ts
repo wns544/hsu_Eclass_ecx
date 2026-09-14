@@ -73,13 +73,14 @@ function installResourceFilenameHook() {
                 sourceUrl: link.href,
                 filenameBase,
             }).then((result: { ok?: boolean, error?: string }) => {
-                if (!result?.ok) {
-                    throw new Error(result?.error || "파일 다운로드를 시작하지 못했습니다.");
+                if (result?.ok === false) {
+                    showFilenameNotice(`파일명 적용 실패: ${result.error || "파일 다운로드를 시작하지 못했습니다."}`, true);
+                    return;
                 }
                 showFilenameNotice(`${filenameBase} · 다운로드 시작됨`);
             }).catch((error) => {
                 console.error("[ecx] course resource download failed", error);
-                showFilenameNotice(`파일명 적용 실패: ${error instanceof Error ? error.message : "알 수 없는 오류"}`, true);
+                showFilenameNotice(`${filenameBase} · 다운로드 요청을 보냈습니다. 목록을 확인해 주세요.`);
             });
         });
         directButton.classList.add("ecx-resource-direct-download", "ecx-badge-direct-download");

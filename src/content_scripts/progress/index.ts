@@ -70,6 +70,7 @@ function installResourceFilenameHook() {
         }
 
         event.preventDefault();
+        event.stopImmediatePropagation();
         const filenameBase = `${String(week).padStart(2, "0")}주차_${title}`;
         showFilenameNotice(`${filenameBase} · 파일명 적용 후 다운로드 중`);
         void chrome.runtime.sendMessage({

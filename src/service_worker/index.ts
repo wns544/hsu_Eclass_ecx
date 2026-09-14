@@ -58,6 +58,12 @@ type RegisterDownloadFilenameMessage = {
     filenameBase: string;
 };
 
+type DownloadCourseResourceMessage = {
+    type: "DOWNLOAD_COURSE_RESOURCE";
+    sourceUrl: string;
+    filenameBase: string;
+};
+
 type CaptureDirectDownloadMessage = {
     type: "CAPTURE_DIRECT_DOWNLOAD_STREAM";
     jobId?: string;
@@ -387,6 +393,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         });
         sendResponse({ ok: true });
         return;
+    }
+
+    if (message.type === "DOWNLOAD_COURSE_RESOURCE") {
+        void downloadCourseResource(message as DownloadCourseResourceMessage)
+            .then((result) => sendResponse(result))
+            .catch((error) => sendResponse({
+                ok: false,
+                error: error instanceof Error ? error.message : "파일 다운로드를 시작하지 못했습니다.",
+            }));
+        return true;
     }
 
     if (message.type === "CAPTURE_DIRECT_DOWNLOAD_STREAM") {
@@ -955,6 +971,35 @@ function trackOffscreenDownload(downloadId: number, sessionId: string, jobId?: s
 function sanitizeFilename(text: string) {
     const normalized = normalizeTitle(text);
     return normalized.replace(/[\\/:*?\"<>|]/g, "_").slice(0, 120) || "video";
+}
+
+async function downloadCourseResource(message: DownloadCourseResourceMessage) {
+    const filenameBase = sanitizeFilename(message.filenameBase);
+    if (!message.sourceUrl || !filenameBase) {
+        throw new Error("파일 이름 정보를 찾지 못했습니다.");
+    }
+
+    const pending = { filenameBase, expiresAt: Date.now() + 60_000 };
+    pendingFilenameSuggestions.set(normalizeDownloadUrl(message.sourceUrl), pending);
+    try {
+        const response = await fetch(message.sourceUrl, {
+            method: "HEAD",
+            credentials: "include",
+            redirect: "follow",
+        });
+        if (response.url) {
+            pendingFilenameSuggestions.set(normalizeDownloadUrl(response.url), pending);
+        }
+    } catch {
+        // The browser download below can still use the original URL and logged-in cookies.
+    }
+
+    const downloadId = await chrome.downloads.download({
+        url: message.sourceUrl,
+        conflictAction: "uniquify",
+        saveAs: false,
+    });
+    return { ok: true, downloadId };
 }
 
 function normalizeDownloadUrl(value: string) {

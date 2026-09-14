@@ -63,10 +63,15 @@ function installResourceFilenameHook() {
         event.preventDefault();
         const filenameBase = `${String(week).padStart(2, "0")}주차_${title}`;
         void chrome.runtime.sendMessage({
-            type: "REGISTER_DOWNLOAD_FILENAME",
+            type: "DOWNLOAD_COURSE_RESOURCE",
             sourceUrl: link.href,
             filenameBase,
-        }).finally(() => {
+        }).then((result: { ok?: boolean, error?: string }) => {
+            if (!result?.ok) {
+                throw new Error(result?.error || "파일 다운로드를 시작하지 못했습니다.");
+            }
+        }).catch((error) => {
+            console.error("[ecx] course resource download failed", error);
             window.location.assign(link.href);
         });
     }, true);

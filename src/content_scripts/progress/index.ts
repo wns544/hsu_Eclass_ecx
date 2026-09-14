@@ -43,18 +43,9 @@ onLoad(async () => {
 });
 
 function installResourceFilenameHook() {
-    document.addEventListener("click", (event) => {
-        if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
-            return;
-        }
-
-        const target = event.target;
-        if (!(target instanceof Element)) {
-            return;
-        }
-
-        const link = target.closest<HTMLAnchorElement>("a[href]");
-        const activity = link?.closest("li.activity, .activity");
+    const activities = document.querySelectorAll("li.activity, .activity");
+    for (const activity of activities) {
+        const link = activity.querySelector<HTMLAnchorElement>("a[href]");
         const title = activity?.querySelector("span.instancename")?.firstChild?.textContent?.trim()
             || link?.textContent?.trim();
         const week = getActivityWeek(activity);
@@ -66,28 +57,34 @@ function installResourceFilenameHook() {
             || activity?.classList.contains("resource")
             || /문서|파일|pdf|word|excel|powerpoint|text|zip/i.test(iconLabel);
         if (!link || !activity || !title || !week || !isResourceLink) {
-            return;
+            continue;
         }
 
-        event.preventDefault();
-        event.stopImmediatePropagation();
         const filenameBase = `${String(week).padStart(2, "0")}주차_${title}`;
-        showFilenameNotice(`${filenameBase} · 파일명 적용 후 다운로드 중`);
-        void chrome.runtime.sendMessage({
-            type: "DOWNLOAD_COURSE_RESOURCE",
-            sourceUrl: link.href,
-            filenameBase,
-        }).then((result: { ok?: boolean, error?: string }) => {
-            if (!result?.ok) {
-                throw new Error(result?.error || "파일 다운로드를 시작하지 못했습니다.");
-            }
-            showFilenameNotice(`${filenameBase} · 다운로드 시작됨`);
-        }).catch((error) => {
-            console.error("[ecx] course resource download failed", error);
-            showFilenameNotice("파일명 적용에 실패해 기본 다운로드로 전환합니다.", true);
-            window.location.assign(link.href);
+        const trigger = document.createElement("button");
+        trigger.type = "button";
+        trigger.className = "ecx-resource-download-trigger";
+        trigger.title = `${filenameBase} 이름으로 다운로드`;
+        trigger.setAttribute("aria-label", `${title} 다운로드`);
+        trigger.append(...Array.from(link.childNodes));
+        link.replaceWith(trigger);
+        trigger.addEventListener("click", () => {
+            showFilenameNotice(`${filenameBase} · 파일명 적용 후 다운로드 중`);
+            void chrome.runtime.sendMessage({
+                type: "DOWNLOAD_COURSE_RESOURCE",
+                sourceUrl: link.href,
+                filenameBase,
+            }).then((result: { ok?: boolean, error?: string }) => {
+                if (!result?.ok) {
+                    throw new Error(result?.error || "파일 다운로드를 시작하지 못했습니다.");
+                }
+                showFilenameNotice(`${filenameBase} · 다운로드 시작됨`);
+            }).catch((error) => {
+                console.error("[ecx] course resource download failed", error);
+                showFilenameNotice(`파일명 적용 실패: ${error instanceof Error ? error.message : "알 수 없는 오류"}`, true);
+            });
         });
-    }, true);
+    }
 }
 
 function getActivityWeek(activity: Element | null | undefined) {

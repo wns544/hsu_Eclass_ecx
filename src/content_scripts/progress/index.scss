@@ -2,6 +2,20 @@
 @use "../comps/progress";
 @use "../comps/horizontal";
 
+.ecx-resource-download-trigger {
+    display: inline;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: inherit;
+    cursor: pointer;
+}
+
+.ecx-resource-download-trigger:hover { text-decoration: underline; }
+.ecx-resource-download-trigger:focus-visible { outline: 3px solid #68aafc; outline-offset: 3px; border-radius: 3px; }
+
 .ecx-filename-notice {
     position: fixed;
     right: 22px;

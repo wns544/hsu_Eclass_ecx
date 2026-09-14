@@ -2,6 +2,15 @@
 @use "../comps/progress";
 @use "../comps/horizontal";
 
+// 일반 파일의 직접다운은 영상 직접다운(검정)과 구분한다.
+.ecx-resource-direct-download.ecx-badge-direct-download {
+    background-color: #1267c4;
+}
+
+.ecx-resource-direct-download.ecx-badge-direct-download:hover {
+    background-color: #0c529f;
+}
+
 .ecx-filename-notice {
     position: fixed;
     right: 22px;

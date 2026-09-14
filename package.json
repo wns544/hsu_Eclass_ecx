@@ -1,7 +1,7 @@
 {
     "name": "ecx",
     "private": true,
-    "version": "0.2.1",
+    "version": "2.1.0",
     "type": "module",
     "scripts": {
         "dev:ts": "tsx dev-ts",

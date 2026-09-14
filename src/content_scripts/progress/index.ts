@@ -54,18 +54,24 @@ function installResourceFilenameHook() {
         }
 
         const link = target.closest<HTMLAnchorElement>("a[href]");
-        const activity = link?.closest("li.activity");
-        const title = activity?.querySelector("span.instancename")?.firstChild?.textContent?.trim();
+        const activity = link?.closest("li.activity, .activity");
+        const title = activity?.querySelector("span.instancename")?.firstChild?.textContent?.trim()
+            || link?.textContent?.trim();
         const week = getActivityWeek(activity);
+        const iconLabel = activity?.querySelector<HTMLImageElement>("img.activityicon")?.alt || "";
         const isResourceLink = link?.pathname.includes("/mod/resource/")
+            || link?.pathname.includes("/mod/ubfile/")
+            || link?.pathname.includes("/mod/file/")
             || link?.pathname.includes("/pluginfile.php/")
-            || activity?.classList.contains("resource");
+            || activity?.classList.contains("resource")
+            || /문서|파일|pdf|word|excel|powerpoint|text|zip/i.test(iconLabel);
         if (!link || !activity || !title || !week || !isResourceLink) {
             return;
         }
 
         event.preventDefault();
         const filenameBase = `${String(week).padStart(2, "0")}주차_${title}`;
+        showFilenameNotice(`${filenameBase} · 파일명 적용 후 다운로드 중`);
         void chrome.runtime.sendMessage({
             type: "DOWNLOAD_COURSE_RESOURCE",
             sourceUrl: link.href,
@@ -74,17 +80,32 @@ function installResourceFilenameHook() {
             if (!result?.ok) {
                 throw new Error(result?.error || "파일 다운로드를 시작하지 못했습니다.");
             }
+            showFilenameNotice(`${filenameBase} · 다운로드 시작됨`);
         }).catch((error) => {
             console.error("[ecx] course resource download failed", error);
+            showFilenameNotice("파일명 적용에 실패해 기본 다운로드로 전환합니다.", true);
             window.location.assign(link.href);
         });
     }, true);
 }
 
 function getActivityWeek(activity: Element | null | undefined) {
-    const section = activity?.closest<HTMLElement>("li.section[id^='section-']");
+    const section = activity?.closest<HTMLElement>("[id^='section-']");
     const value = Number(section?.id.replace("section-", ""));
     return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+function showFilenameNotice(text: string, isError = false) {
+    let notice = document.querySelector<HTMLDivElement>(".ecx-filename-notice");
+    if (!notice) {
+        notice = document.createElement("div");
+        notice.className = "ecx-filename-notice";
+        document.body.append(notice);
+    }
+    notice.dataset.variant = isError ? "error" : "success";
+    notice.textContent = text;
+    notice.hidden = false;
+    window.setTimeout(() => { if (notice) notice.hidden = true; }, 3500);
 }
 
 export function insertBelow(act: Element, el: Element) {

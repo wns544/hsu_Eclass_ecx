@@ -1,9 +1,9 @@
 {
     "$schema": "https://json.schemastore.org/chrome-manifest",
     "manifest_version": 3,
-    "name": "hsu-ecx 0.2.1_Customed",
+    "name": "hsu-ecx 0.2.2_Customed",
     "description": "한성대학교 e클래스 확장 프로그램",
-    "version": "0.2.1",
+    "version": "0.2.2",
     "icons": {
         "16": "/assets/icon-16.png",
         "48": "/assets/icon-48.png",

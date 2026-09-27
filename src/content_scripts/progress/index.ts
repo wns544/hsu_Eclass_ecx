@@ -31,8 +31,21 @@ onLoad(async () => {
             continue;
         }
 
+        const unmatchedVideoInfos = [...videoInfos];
         const videos = section.querySelectorAll(VideoSelector);
-        videos.forEach((video, i) => videoExt(video, videoInfos[i], week));
+        videos.forEach((video, i) => {
+            const title = video.querySelector("span.instancename")?.firstChild?.textContent?.trim();
+            const matchIndex = title
+                ? unmatchedVideoInfos.findIndex(info => info.title === title)
+                : -1;
+            const videoInfo = matchIndex >= 0
+                ? unmatchedVideoInfos.splice(matchIndex, 1)[0]
+                : videoInfos[i];
+
+            if (videoInfo) {
+                videoExt(video, videoInfo, week);
+            }
+        });
     }
 
     const assigns = document.querySelectorAll(AssignSelector + SummaryExcl);
